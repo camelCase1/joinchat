@@ -1,0 +1,515 @@
+'use client';
+
+import { useState, useEffect, useRef } from 'react';
+import { useSocket } from '~/hooks/useSocket';
+import { useAuth } from '~/contexts/AuthContext';
+import toast from 'react-hot-toast';
+
+interface Message {
+  id: string;
+  userId: string;
+  userName: string;
+  content: string;
+  timestamp: Date;
+  type: 'text' | 'image' | 'video';
+}
+
+interface User {
+  id: string;
+  name: string;
+  avatar?: string;
+  badges: string[];
+  joinedAt: Date;
+  trustScore: number;
+  profileAge: Date;
+  messageCount: number;
+}
+
+interface ChatRoom {
+  id: string;
+  name: string;
+  participants: User[];
+  messages: Message[];
+  createdAt: Date;
+  maxParticipants: number;
+}
+
+interface ChatRoomProps {
+  roomId: string;
+  onLeaveRoom: () => void;
+}
+
+export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
+  const { socket } = useSocket();
+  const { user, logout } = useAuth();
+  const [room, setRoom] = useState<ChatRoom | null>(null);
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState('');
+  const [participants, setParticipants] = useState<User[]>([]);
+  const [mutedUsers, setMutedUsers] = useState<Set<string>>(new Set());
+  const [showParticipants, setShowParticipants] = useState(true);
+  const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [autocompleteUsers, setAutocompleteUsers] = useState<User[]>([]);
+  const [autocompleteIndex, setAutocompleteIndex] = useState(0);
+  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const addToRecentChats = (roomId: string, roomName: string, lastMessage?: string) => {
+    if (typeof window === 'undefined') return;
+    
+    const existingChats = JSON.parse(localStorage.getItem('recentChats') || '[]');
+    const chatIndex = existingChats.findIndex((chat: { roomId: string; roomName: string; lastMessageTime: string; lastMessage: string }) => chat.roomId === roomId);
+    
+    const chatData = {
+      roomId,
+      roomName,
+      lastMessageTime: new Date().toISOString(),
+      lastMessage: lastMessage || ''
+    };
+    
+    if (chatIndex >= 0) {
+      // Update existing chat
+      existingChats[chatIndex] = chatData;
+    } else {
+      // Add new chat to beginning
+      existingChats.unshift(chatData);
+    }
+    
+    // Keep only last 10 recent chats
+    const recentChats = existingChats.slice(0, 10);
+    localStorage.setItem('recentChats', JSON.stringify(recentChats));
+  };
+
+  useEffect(() => {
+    if (!socket || !user) return;
+
+    const currentUser = {
+      id: user.uid,
+      name: user.displayName || 'Anonymous',
+      badges: ['member'],
+      joinedAt: new Date(),
+    };
+
+    socket.emit('join-room', { roomId, user: currentUser });
+
+    socket.on('joined-room', ({ room }: { room: ChatRoom }) => {
+      setRoom(room);
+      setParticipants(room.participants);
+      
+      // Add to recent chats
+      addToRecentChats(room.id, room.name);
+    });
+
+    socket.on('recent-messages', ({ messages }: { messages: Message[] }) => {
+      setMessages(messages);
+    });
+
+    socket.on('new-message', (message: Message) => {
+      setMessages(prev => [...prev, message]);
+      
+      // Update recent chats with new message
+      if (room) {
+        addToRecentChats(room.id, room.name, message.content);
+      }
+    });
+
+    socket.on('user-joined', ({ user, participantCount }: { user: User; participantCount: number }) => {
+      setParticipants(prev => [...prev, user]);
+      toast.success(`${user.name} joined the room`);
+    });
+
+    socket.on('user-left', ({ userId, participantCount }: { userId: string; participantCount: number }) => {
+      setParticipants(prev => prev.filter(p => p.id !== userId));
+    });
+
+    socket.on('room-redirect', ({ newRoomId }: { newRoomId: string }) => {
+      toast.error('Room is full, redirecting to alternative...');
+    });
+
+    socket.on('error', ({ message }: { message: string }) => {
+      toast.error(message);
+    });
+
+    socket.on('kicked-for-idle', () => {
+      toast.error('You were kicked for being idle too long');
+      onLeaveRoom();
+    });
+
+    return () => {
+      socket.off('joined-room');
+      socket.off('recent-messages');
+      socket.off('new-message');
+      socket.off('user-joined');
+      socket.off('user-left');
+      socket.off('room-redirect');
+      socket.off('error');
+      socket.off('kicked-for-idle');
+    };
+  }, [socket, user, roomId]);
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [messages]);
+
+  const handleSendMessage = (e: React.FormEvent) => {
+    e.preventDefault();
+    
+    if (!newMessage.trim() || !socket || !user) return;
+
+    const message = {
+      userId: user.uid,
+      userName: user.displayName || 'Anonymous',
+      content: newMessage.trim(),
+      type: 'text' as const,
+    };
+
+    socket.emit('send-message', { roomId, message });
+    setNewMessage('');
+  };
+
+  const handleLeaveRoom = () => {
+    if (socket && user) {
+      socket.emit('leave-room', { roomId, userId: user.uid });
+    }
+    onLeaveRoom();
+  };
+
+  const formatTime = (timestamp: Date) => {
+    return new Date(timestamp).toLocaleTimeString('en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  };
+
+  const handleMuteUser = (userId: string) => {
+    setMutedUsers(prev => new Set([...prev, userId]));
+    toast.success('User muted');
+  };
+
+  const handleUnmuteUser = (userId: string) => {
+    setMutedUsers(prev => {
+      const newSet = new Set(prev);
+      newSet.delete(userId);
+      return newSet;
+    });
+    toast.success('User unmuted');
+  };
+
+  const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setNewMessage(value);
+
+    // Handle autocomplete for @mentions
+    const words = value.split(' ');
+    const lastWord = words[words.length - 1];
+    
+    if (lastWord && lastWord.startsWith('@') && lastWord.length > 1) {
+      const searchTerm = lastWord.substring(1).toLowerCase();
+      const matchingUsers = participants.filter(p => 
+        p.name.toLowerCase().includes(searchTerm) && p.id !== user?.uid
+      );
+      
+      if (matchingUsers.length > 0) {
+        setAutocompleteUsers(matchingUsers);
+        setShowAutocomplete(true);
+        setAutocompleteIndex(0);
+      } else {
+        setShowAutocomplete(false);
+      }
+    } else {
+      setShowAutocomplete(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (showAutocomplete) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        setAutocompleteIndex(prev => 
+          prev < autocompleteUsers.length - 1 ? prev + 1 : 0
+        );
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setAutocompleteIndex(prev => 
+          prev > 0 ? prev - 1 : autocompleteUsers.length - 1
+        );
+      } else if (e.key === 'Tab' || e.key === 'Enter') {
+        e.preventDefault();
+        const selectedUser = autocompleteUsers[autocompleteIndex];
+        if (selectedUser) {
+          selectAutocompleteUser(selectedUser);
+        }
+      } else if (e.key === 'Escape') {
+        setShowAutocomplete(false);
+      }
+    }
+  };
+
+  const selectAutocompleteUser = (selectedUser: User) => {
+    const words = newMessage.split(' ');
+    words[words.length - 1] = `@${selectedUser.name} `;
+    setNewMessage(words.join(' '));
+    setShowAutocomplete(false);
+    inputRef.current?.focus();
+  };
+
+  const filteredMessages = messages.filter(message => !mutedUsers.has(message.userId));
+
+  // Simplified badge styling to match clean theme
+  const getBadgeColor = () => {
+    return 'bg-gray-100 text-gray-700';
+  };
+
+  const getTrustScoreColor = (score: number) => {
+    if (score >= 80) return 'text-green-600';
+    if (score >= 60) return 'text-gray-600';
+    if (score >= 40) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  if (!room) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-white">
+        <div className="text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-red-500"></div>
+          </div>
+          <p className="text-gray-800 text-lg font-medium">Joining room...</p>
+          <p className="text-gray-600 text-sm mt-2">Getting ready for great conversations</p>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex h-screen bg-white">
+      {/* Main Chat Area */}
+      <div className="flex-1 flex flex-col">
+        {/* Header */}
+        <div className="bg-white p-6 flex items-center justify-between border-b border-gray-200">
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={handleLeaveRoom}
+              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
+              aria-label="Back to rooms"
+            >
+              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+              </svg>
+            </button>
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">#{room.name}</h1>
+              <span className="text-gray-600 text-sm">
+                {participants.length} of {room.maxParticipants} people online
+              </span>
+            </div>
+          </div>
+          <div className="flex items-center space-x-3">
+            <button
+              onClick={() => setShowParticipants(!showParticipants)}
+              className="btn btn-secondary"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 715 0z" />
+              </svg>
+              {showParticipants ? 'Hide' : 'Show'} People
+            </button>
+            <button
+              onClick={logout}
+              className="btn btn-secondary"
+            >
+              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 713 3v1" />
+              </svg>
+              Logout
+            </button>
+          </div>
+        </div>
+
+        {/* Messages */}
+        <div className="flex-1 overflow-y-auto p-8 space-y-6 scroll-smooth bg-gray-50">
+          {messages.length === 0 ? (
+            <div className="text-center mt-16">
+              <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-6 flex items-center justify-center">
+                <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-semibold text-gray-800 mb-2">Welcome to #{room.name}!</h3>
+              <p className="text-gray-600">Be the first to start the conversation</p>
+            </div>
+          ) : (
+            filteredMessages.map((message) => (
+              <div key={message.id} className="flex items-start space-x-4 p-4 bg-white rounded-lg shadow-sm">
+                <div 
+                  className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
+                  style={{ 
+                    backgroundColor: `hsl(${message.userName.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                  }}
+                >
+                  {message.userName.charAt(0).toUpperCase()}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-3 mb-2">
+                    <span className="font-semibold text-gray-900">{message.userName}</span>
+                    <span className="text-xs text-gray-500">
+                      {formatTime(message.timestamp)}
+                    </span>
+                  </div>
+                  <p className="text-gray-700 leading-relaxed break-words">{message.content}</p>
+                </div>
+              </div>
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
+
+        {/* Message Input */}
+        <div className="bg-white border-t border-gray-200 p-6">
+          <form onSubmit={handleSendMessage} className="relative">
+            {/* Autocomplete Dropdown */}
+            {showAutocomplete && (
+              <div className="absolute bottom-full left-0 right-16 bg-white border border-gray-200 rounded-lg shadow-lg mb-2 max-h-48 overflow-y-auto z-10">
+                {autocompleteUsers.map((participant, index) => (
+                  <button
+                    key={participant.id}
+                    type="button"
+                    onClick={() => selectAutocompleteUser(participant)}
+                    className={`w-full px-4 py-2 text-left hover:bg-gray-100 flex items-center space-x-3 ${
+                      index === autocompleteIndex ? 'bg-red-50 border-l-4 border-red-500' : ''
+                    }`}
+                  >
+                    <div 
+                      className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium"
+                      style={{ 
+                        backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                      }}
+                    >
+                      {participant.name.charAt(0).toUpperCase()}
+                    </div>
+                    <span className="font-medium text-gray-800">{participant.name}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            
+            <div className="flex space-x-4">
+              <input
+                ref={inputRef}
+                value={newMessage}
+                onChange={handleInputChange}
+                onKeyDown={handleKeyDown}
+                placeholder={`Message #${room.name}...`}
+                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-base"
+                maxLength={500}
+              />
+              <button
+                type="submit"
+                disabled={!newMessage.trim()}
+                className="btn btn-primary px-6 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <svg className="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+                Send
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+
+      {/* Participants Sidebar */}
+      {showParticipants && (
+        <div className="w-80 bg-white border-l border-gray-200">
+          <div className="p-6 border-b border-gray-200">
+            <h3 className="text-xl font-semibold text-gray-900 flex items-center">
+              <svg className="w-5 h-5 mr-2 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+              </svg>
+              People ({participants.length})
+            </h3>
+            {mutedUsers.size > 0 && (
+              <p className="text-sm text-gray-500 mt-1">
+                {mutedUsers.size} user{mutedUsers.size !== 1 ? 's' : ''} muted
+              </p>
+            )}
+          </div>
+          <div className="p-4 space-y-2 overflow-y-auto max-h-full">
+            {participants.map((participant) => (
+              <div key={participant.id} className="group flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
+                <div 
+                  className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 relative"
+                  style={{ 
+                    backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                  }}
+                >
+                  {participant.name.charAt(0).toUpperCase()}
+                  {mutedUsers.has(participant.id) && (
+                    <div className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1V7a1 1 0 011-1h1.586l4.707-4.707C10.923.663 12 1.109 12 2v20c0 .891-1.077 1.337-1.707.707L5.586 18z" />
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                      </svg>
+                    </div>
+                  )}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center space-x-2">
+                    <p className={`font-semibold truncate ${mutedUsers.has(participant.id) ? 'text-gray-400 line-through' : 'text-gray-900'}`}>
+                      {participant.name}
+                    </p>
+                    {participant.id === user?.uid && (
+                      <span className="text-xs text-red-600 bg-red-50 px-2 py-1 rounded-full font-medium">(You)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center space-x-2 mt-1">
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-sm text-gray-500">Online</span>
+                  </div>
+                  {participant.badges.length > 0 && (
+                    <div className="flex flex-wrap gap-1 mt-2">
+                      {participant.badges.slice(0, 2).map((badge) => (
+                        <span key={badge} className={`px-2 py-1 text-xs rounded-full font-medium ${getBadgeColor()}`}>
+                          {badge}
+                        </span>
+                      ))}
+                      {participant.badges.length > 2 && (
+                        <span className="px-2 py-1 bg-gray-100 text-gray-500 text-xs rounded-full font-medium">
+                          +{participant.badges.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+                <div className="flex items-center">
+                  {participant.id !== user?.uid && (
+                    <button
+                      onClick={() => mutedUsers.has(participant.id) ? handleUnmuteUser(participant.id) : handleMuteUser(participant.id)}
+                      className="opacity-0 group-hover:opacity-100 p-2 hover:bg-gray-200 rounded-lg transition-all"
+                      title={mutedUsers.has(participant.id) ? 'Unmute user' : 'Mute user'}
+                    >
+                      {mutedUsers.has(participant.id) ? (
+                        <svg className="w-4 h-4 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1V7a1 1 0 011-1h1.586l4.707-4.707C10.923.663 12 1.109 12 2v20c0 .891-1.077 1.337-1.707.707L5.586 18z" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 text-gray-400 hover:text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5.586 15H4a1 1 0 01-1-1V7a1 1 0 011-1h1.586l4.707-4.707C10.923.663 12 1.109 12 2v20c0 .891-1.077 1.337-1.707.707L5.586 18z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+                        </svg>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

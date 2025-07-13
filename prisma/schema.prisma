@@ -1,0 +1,111 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+    provider = "prisma-client-js"
+}
+
+datasource db {
+    provider = "sqlite"
+    url      = env("DATABASE_URL")
+}
+
+model User {
+    id           String   @id @default(cuid())
+    email        String   @unique
+    displayName  String
+    avatar       String?
+    profileAge   DateTime @default(now())
+    trustScore   Int      @default(0)
+    badges       String   @default("[]") // JSON array of badge types
+    isOnline     Boolean  @default(false)
+    lastSeen     DateTime @default(now())
+    createdAt    DateTime @default(now())
+    updatedAt    DateTime @updatedAt
+
+    messages     Message[]
+    roomMembers  RoomMember[]
+    mutedUsers   MutedUser[] @relation("UserMutes")
+    mutedByUsers MutedUser[] @relation("MutedUser")
+
+    @@index([email])
+    @@index([trustScore])
+}
+
+model ChatRoom {
+    id               String   @id @default(cuid())
+    name             String
+    description      String?
+    topic            String
+    isPublic         Boolean  @default(true)
+    maxParticipants  Int      @default(30)
+    participantCount Int      @default(0)
+    isActive         Boolean  @default(true)
+    featured         Boolean  @default(false)
+    createdAt        DateTime @default(now())
+    updatedAt        DateTime @updatedAt
+
+    messages     Message[]
+    roomMembers  RoomMember[]
+
+    @@index([topic])
+    @@index([featured])
+    @@index([participantCount])
+}
+
+model RoomMember {
+    id       String   @id @default(cuid())
+    userId   String
+    roomId   String
+    joinedAt DateTime @default(now())
+    lastSeen DateTime @default(now())
+    isActive Boolean  @default(true)
+
+    user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, roomId])
+    @@index([roomId])
+    @@index([userId])
+}
+
+model Message {
+    id        String      @id @default(cuid())
+    content   String
+    type      MessageType @default(TEXT)
+    userId    String
+    roomId    String
+    isEdited  Boolean     @default(false)
+    isDeleted Boolean     @default(false)
+    createdAt DateTime    @default(now())
+    updatedAt DateTime    @updatedAt
+
+    user User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+    room ChatRoom @relation(fields: [roomId], references: [id], onDelete: Cascade)
+
+    @@index([roomId, createdAt])
+    @@index([userId])
+}
+
+model MutedUser {
+    id       String   @id @default(cuid())
+    userId   String   // The user who muted
+    mutedId  String   // The user who was muted
+    roomId   String?  // Room-specific mute (null for global)
+    mutedAt  DateTime @default(now())
+    expiresAt DateTime?
+
+    user      User @relation("UserMutes", fields: [userId], references: [id], onDelete: Cascade)
+    mutedUser User @relation("MutedUser", fields: [mutedId], references: [id], onDelete: Cascade)
+
+    @@unique([userId, mutedId, roomId])
+    @@index([userId])
+    @@index([mutedId])
+}
+
+enum MessageType {
+    TEXT
+    IMAGE
+    VIDEO
+    SYSTEM
+}
