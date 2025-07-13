@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npx shadcn@latest init:*)",
+      "Bash(npx shadcn@latest add:*)",
+      "Bash(cp:*)",
+      "Bash(npm run:*)",
+      "Bash(rm:*)",
+      "Bash(npm uninstall:*)",
+      "Bash(find:*)",
+      "Bash(pkill:*)",
+      "Bash(npx prisma migrate reset:*)",
+      "WebFetch(domain:www.meetup.com)",
+      "Bash(lsof:*)",
+      "Bash(ls:*)",
+      "Bash(chmod:*)"
+    ],
+    "deny": []
+  }
+}
