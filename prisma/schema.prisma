@@ -27,9 +27,17 @@ model User {
     roomMembers  RoomMember[]
     mutedUsers   MutedUser[] @relation("UserMutes")
     mutedByUsers MutedUser[] @relation("MutedUser")
+    password     UserPassword?
 
     @@index([email])
     @@index([trustScore])
+}
+
+model UserPassword {
+    userId       String @id
+    passwordHash String
+
+    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
 model ChatRoom {

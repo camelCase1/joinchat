@@ -14,7 +14,16 @@
       "WebFetch(domain:www.meetup.com)",
       "Bash(lsof:*)",
       "Bash(ls:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(firebase deploy:*)",
+      "Bash(mv:*)",
+      "Bash(npx prisma migrate:*)",
+      "Bash(kill:*)",
+      "Bash(npx prisma:*)",
+      "Bash(npx tsx:*)",
+      "Bash(grep:*)",
+      "Bash(node:*)",
+      "Bash(npm start)"
     ],
     "deny": []
   }

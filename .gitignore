@@ -47,3 +47,5 @@ yarn-error.log*
 
 # YoYo AI version control directory
 .yoyo/
+
+apphosting.local.yaml

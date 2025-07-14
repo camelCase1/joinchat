@@ -6,29 +6,27 @@ import { useAuth } from '~/contexts/AuthContext';
 import { api } from '~/trpc/react';
 import toast from 'react-hot-toast';
 
-// interface Room {
-//   id: string;
-//   name: string;
-//   participantCount: number;
-//   maxParticipants: number;
-//   createdAt: Date;
-//   featured?: boolean;
-// }
-
 interface RoomListProps {
   onJoinRoom: (roomId: string) => void;
 }
 
 export function RoomList({ onJoinRoom }: RoomListProps) {
   const { socket } = useSocket();
-  const { logout } = useAuth();
   const [searchTerm, setSearchTerm] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newRoomName, setNewRoomName] = useState('');
-  const [showRecentChats, setShowRecentChats] = useState(false);
+  const [showSearchDropdown, setShowSearchDropdown] = useState(false);
+  const [selectedRoomIndex, setSelectedRoomIndex] = useState(0);
 
-  // Use tRPC to fetch rooms
-  const { data: rooms = [], refetch: refetchRooms, isLoading } = api.post.getRooms.useQuery();
+  // Use tRPC to fetch rooms with caching
+  const { data: rooms = [], refetch: refetchRooms, isLoading } = api.post.getRooms.useQuery(
+    undefined,
+    {
+      staleTime: 30000, // Consider data fresh for 30 seconds
+      gcTime: 300000, // Keep in cache for 5 minutes (renamed from cacheTime)
+      refetchOnWindowFocus: false, // Don't refetch when window regains focus
+    }
+  );
   const createRoomMutation = api.post.createRoom.useMutation({
     onSuccess: (newRoom) => {
       toast.success('Room created successfully!');
@@ -50,10 +48,11 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
   useEffect(() => {
     const interval = setInterval(() => {
       void refetchRooms();
-    }, 10000); // Refresh every 10 seconds
+    }, 30000); // Refresh every 30 seconds (reduced frequency)
 
     return () => clearInterval(interval);
-  }, [refetchRooms]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Remove refetchRooms from dependencies to prevent infinite loop
 
   const getStatusColor = (participantCount: number, maxParticipants: number) => {
     const ratio = participantCount / maxParticipants;
@@ -83,28 +82,56 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
     room.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
+  const searchResults = searchTerm.trim() ? filteredRooms.slice(0, 8) : []; // Limit to 8 results for dropdown
   const featuredRooms = filteredRooms.filter(room => room.featured || room.participantCount > 0).slice(0, 6);
   const otherRooms = filteredRooms.filter(room => !featuredRooms.includes(room));
 
+  const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setSearchTerm(value);
+    setShowSearchDropdown(value.trim().length > 0);
+    setSelectedRoomIndex(0);
+  };
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (!showSearchDropdown || searchResults.length === 0) return;
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setSelectedRoomIndex(prev => 
+        prev < searchResults.length - 1 ? prev + 1 : 0
+      );
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setSelectedRoomIndex(prev => 
+        prev > 0 ? prev - 1 : searchResults.length - 1
+      );
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (searchResults[selectedRoomIndex]) {
+        onJoinRoom(searchResults[selectedRoomIndex].id);
+        setSearchTerm('');
+        setShowSearchDropdown(false);
+      }
+    } else if (e.key === 'Escape') {
+      setShowSearchDropdown(false);
+    }
+  };
+
+  const handleRoomSelect = (roomId: string) => {
+    onJoinRoom(roomId);
+    setSearchTerm('');
+    setShowSearchDropdown(false);
+  };
+
   return (
     <div className="min-h-screen bg-white">
-      <div className="container mx-auto px-4 py-8">
+      <div className="container mx-auto px-4 md:px-6 py-6 md:py-8">
         {/* Header */}
-        <div className="flex items-center justify-between mb-12 pb-6 border-b border-gray-200">
-          <div className="flex items-center space-x-4">
-            <button
-              onClick={() => setShowRecentChats(true)}
-              className="p-2 rounded-lg hover:bg-gray-100 transition-colors"
-              aria-label="Open recent chats"
-            >
-              <svg className="w-6 h-6 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <div>
-              <h1 className="text-4xl font-bold text-gray-900 mb-2">Join.Chat</h1>
-              <p className="text-gray-600 text-lg">The people platform—Where interests become conversations</p>
-            </div>
+        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8 md:mb-12 pb-4 md:pb-6 border-b border-gray-200">
+          <div className="mb-4 md:mb-0">
+            <h1 className="text-2xl md:text-4xl font-bold text-gray-900 mb-2">Join.Chat</h1>
+            <p className="text-gray-600 text-sm md:text-lg">The people platform—Where interests become conversations</p>
           </div>
           <div className="flex items-center space-x-3">
             <button
@@ -116,20 +143,11 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
               </svg>
               Create Room
             </button>
-            <button
-              onClick={logout}
-              className="btn btn-secondary"
-            >
-              <svg className="w-4 h-4 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
-              </svg>
-              Logout
-            </button>
           </div>
         </div>
 
         {/* Search Bar */}
-        <div className="mb-12 max-w-lg mx-auto">
+        <div className="mb-8 md:mb-12 max-w-lg mx-auto">
           <div className="relative">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
               <svg className="h-5 w-5 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -139,43 +157,85 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
             <input
               type="text"
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={handleSearchChange}
+              onKeyDown={handleSearchKeyDown}
+              onBlur={() => setTimeout(() => setShowSearchDropdown(false), 200)}
+              onFocus={() => searchTerm.trim() && setShowSearchDropdown(true)}
               placeholder="Search for chat rooms..."
               className="block w-full pl-12 pr-4 py-4 bg-white border border-gray-300 rounded-lg text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-lg"
             />
+            
+            {/* Search Dropdown */}
+            {showSearchDropdown && searchResults.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                {searchResults.map((room, index) => (
+                  <button
+                    key={room.id}
+                    onClick={() => handleRoomSelect(room.id)}
+                    className={`w-full text-left px-4 py-3 border-b border-gray-100 last:border-b-0 transition-colors ${
+                      index === selectedRoomIndex 
+                        ? 'bg-red-50 border-l-4 border-l-red-500' 
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-3">
+                        <div className="w-8 h-8 bg-gray-200 rounded-lg flex items-center justify-center">
+                          <span className="text-gray-600 font-bold text-sm">#</span>
+                        </div>
+                        <div>
+                          <p className="font-medium text-gray-900">{room.name}</p>
+                          <p className="text-sm text-gray-500">
+                            {room.participantCount} of {room.maxParticipants} people
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-2">
+                        {room.featured && (
+                          <span className="px-2 py-1 bg-red-100 text-red-700 text-xs font-semibold rounded-full">
+                            POPULAR
+                          </span>
+                        )}
+                        <span className={`px-2 py-1 text-xs font-semibold rounded-full ${getStatusColor(room.participantCount, room.maxParticipants)}`}>
+                          {getStatusText(room.participantCount, room.maxParticipants)}
+                        </span>
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
         {/* Featured Rooms */}
         {featuredRooms.length > 0 && (
           <div className="mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-8">Popular chat rooms</h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-lg font-semibold text-gray-900 mb-4">Popular Chat Rooms</h2>
+            <div className="grid gap-4 md:gap-6 grid-cols-2 md:grid-cols-3">
               {featuredRooms.map((room) => (
-                <div key={room.id} className="room-card p-6">
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-xl font-semibold text-gray-900">{room.name}</h3>
-                      <span className="px-3 py-1 bg-red-500 text-white text-xs font-semibold rounded-full">
+                <div key={room.id} className="room-card p-4 bg-red-50 border-red-200 text-sm">
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <h3 className="text-base font-semibold text-gray-900">{room.name}</h3>
+                      <span className="px-2 py-0.5 bg-red-500 text-white text-xs font-semibold rounded-full">
                         POPULAR
                       </span>
                     </div>
-                    <div className="flex items-center text-gray-600 text-sm">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+                    <div className="flex items-center text-gray-600 text-xs">
+                      <svg className="w-3 h-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 715 0z" />
                       </svg>
                       <span>{room.participantCount} attendees</span>
                     </div>
                   </div>
-                  
-                  <p className="text-gray-600 mb-6 leading-relaxed">
+                  <p className="text-gray-600 mb-3 leading-relaxed text-xs">
                     Join the discussion about {room.name} and connect with others who share your interests.
                   </p>
-                  
                   <button
                     onClick={() => onJoinRoom(room.id)}
                     disabled={room.participantCount >= room.maxParticipants}
-                    className="w-full btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="w-full btn btn-primary btn-sm disabled:opacity-50 disabled:cursor-not-allowed text-xs"
                   >
                     {room.participantCount >= room.maxParticipants ? 'Room Full' : 'Join conversation'}
                   </button>
@@ -188,8 +248,8 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
         {/* All Rooms */}
         {otherRooms.length > 0 && (
           <div className="mb-16">
-            <h2 className="text-3xl font-bold text-gray-900 mb-8">All chat rooms</h2>
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 md:mb-8">All chat rooms</h2>
+            <div className="grid gap-4 md:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
               {otherRooms.map((room) => (
                 <div key={room.id} className="room-card p-6">
                   <div className="mb-4">
@@ -292,65 +352,6 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
               >
                 Create Room
               </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Recent Chats Sidebar */}
-      {showRecentChats && (
-        <div className="fixed inset-0 z-50">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/50"
-            onClick={() => setShowRecentChats(false)}
-          ></div>
-          
-          {/* Sidebar */}
-          <div className="absolute left-0 top-0 h-full w-80 bg-white shadow-xl">
-            <div className="p-6 border-b border-gray-200">
-              <div className="flex items-center justify-between">
-                <h2 className="text-xl font-semibold text-gray-900">Recent Chats</h2>
-                <button
-                  onClick={() => setShowRecentChats(false)}
-                  className="p-1 rounded-lg hover:bg-gray-100"
-                >
-                  <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-            
-            <div className="p-4">
-              {/* Recent chats will be loaded from localStorage or context */}
-              <div className="space-y-3">
-                {typeof window !== 'undefined' && localStorage.getItem('recentChats') ? (
-                  JSON.parse(localStorage.getItem('recentChats') || '[]').map((chat: { roomId: string; roomName: string; lastMessageTime: string }, index: number) => (
-                    <div 
-                      key={index}
-                      className="p-3 rounded-lg border border-gray-200 hover:bg-gray-50 cursor-pointer"
-                      onClick={() => {
-                        onJoinRoom(chat.roomId);
-                        setShowRecentChats(false);
-                      }}
-                    >
-                      <h3 className="font-medium text-gray-900">{chat.roomName}</h3>
-                      <p className="text-sm text-gray-500">
-                        Last active: {new Date(chat.lastMessageTime).toLocaleDateString()}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <div className="text-center py-8">
-                    <svg className="w-12 h-12 text-gray-300 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                    </svg>
-                    <p className="text-gray-500">No recent chats yet</p>
-                    <p className="text-sm text-gray-400 mt-1">Start a conversation to see your chat history</p>
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         </div>

@@ -1,15 +1,18 @@
 import { z } from "zod";
 import { TRPCError } from "@trpc/server";
+import bcrypt from "bcrypt";
 
 import { createTRPCRouter, publicProcedure } from "~/server/api/trpc";
+import { calculateUserBadges, type UserStats } from "~/lib/badges";
 
-// Simple password hashing (in production, use bcrypt)
-function hashPassword(password: string): string {
-  return Buffer.from(password).toString('base64');
+// Secure password hashing using bcrypt
+async function hashPassword(password: string): Promise<string> {
+  const saltRounds = 12;
+  return await bcrypt.hash(password, saltRounds);
 }
 
-function verifyPassword(password: string, hash: string): boolean {
-  return Buffer.from(password).toString('base64') === hash;
+async function verifyPassword(password: string, hash: string): Promise<boolean> {
+  return await bcrypt.compare(password, hash);
 }
 
 export const postRouter = createTRPCRouter({
@@ -50,18 +53,13 @@ export const postRouter = createTRPCRouter({
         }
       });
 
-      // Store password separately (in a real app, this would be properly secured)
-      await ctx.db.$executeRaw`
-        CREATE TABLE IF NOT EXISTS user_passwords (
-          userId TEXT PRIMARY KEY,
-          passwordHash TEXT NOT NULL
-        )
-      `;
-      
-      await ctx.db.$executeRaw`
-        INSERT INTO user_passwords (userId, passwordHash) 
-        VALUES (${user.id}, ${hashPassword(input.password)})
-      `;
+      // Store password using Prisma model
+      await ctx.db.userPassword.create({
+        data: {
+          userId: user.id,
+          passwordHash: await hashPassword(input.password)
+        }
+      });
 
       return {
         user: {
@@ -91,11 +89,11 @@ export const postRouter = createTRPCRouter({
       }
 
       // Check password
-      const passwordRecord = await ctx.db.$queryRaw<{passwordHash: string}[]>`
-        SELECT passwordHash FROM user_passwords WHERE userId = ${user.id}
-      `;
+      const passwordRecord = await ctx.db.userPassword.findUnique({
+        where: { userId: user.id }
+      });
 
-      if (!passwordRecord.length || !verifyPassword(input.password, passwordRecord[0]!.passwordHash)) {
+      if (!passwordRecord || !(await verifyPassword(input.password, passwordRecord.passwordHash))) {
         throw new TRPCError({
           code: "UNAUTHORIZED", 
           message: "Invalid email or password"
@@ -125,6 +123,39 @@ export const postRouter = createTRPCRouter({
       return {
         uid: user.id,
         email: user.email,
+        displayName: user.displayName,
+        badges: JSON.parse(user.badges) as string[],
+        trustScore: user.trustScore,
+        profileAge: user.profileAge,
+        createdAt: user.createdAt
+      };
+    }),
+
+  updateUser: publicProcedure
+    .input(z.object({ 
+      userId: z.string(),
+      displayName: z.string().min(1).max(50).optional(),
+      avatar: z.string().optional()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const updateData: { displayName?: string; avatar?: string } = {};
+      
+      if (input.displayName) {
+        updateData.displayName = input.displayName;
+      }
+      
+      if (input.avatar) {
+        updateData.avatar = input.avatar;
+      }
+
+      const user = await ctx.db.user.update({
+        where: { id: input.userId },
+        data: updateData
+      });
+
+      return {
+        uid: user.id,
+        email: user.email,
         displayName: user.displayName
       };
     }),
@@ -135,7 +166,9 @@ export const postRouter = createTRPCRouter({
       include: {
         _count: {
           select: {
-            roomMembers: true,
+            roomMembers: {
+              where: { isActive: true }
+            },
           },
         },
       },
@@ -205,5 +238,366 @@ export const postRouter = createTRPCRouter({
       });
 
       return messages.reverse();
+    }),
+
+  joinRoom: publicProcedure
+    .input(z.object({ 
+      roomId: z.string(),
+      userId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Check if user exists
+      const user = await ctx.db.user.findUnique({
+        where: { id: input.userId }
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found"
+        });
+      }
+
+      // Check if room exists
+      const room = await ctx.db.chatRoom.findUnique({
+        where: { id: input.roomId }
+      });
+
+      if (!room) {
+        throw new TRPCError({
+          code: "NOT_FOUND", 
+          message: "Room not found"
+        });
+      }
+
+      // Check if user is already a member
+      const existingMember = await ctx.db.roomMember.findUnique({
+        where: {
+          userId_roomId: {
+            userId: input.userId,
+            roomId: input.roomId
+          }
+        }
+      });
+
+      if (!existingMember) {
+        // Add user to room
+        await ctx.db.roomMember.create({
+          data: {
+            userId: input.userId,
+            roomId: input.roomId,
+            isActive: true
+          }
+        });
+      } else {
+        // Update last seen and make active
+        await ctx.db.roomMember.update({
+          where: {
+            userId_roomId: {
+              userId: input.userId,
+              roomId: input.roomId
+            }
+          },
+          data: {
+            lastSeen: new Date(),
+            isActive: true
+          }
+        });
+      }
+
+      return { success: true };
+    }),
+
+  leaveRoom: publicProcedure
+    .input(z.object({ 
+      roomId: z.string(),
+      userId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Mark member as inactive
+      await ctx.db.roomMember.updateMany({
+        where: {
+          userId: input.userId,
+          roomId: input.roomId
+        },
+        data: {
+          isActive: false,
+          lastSeen: new Date()
+        }
+      });
+
+      return { success: true };
+    }),
+
+  getUserRecentRooms: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const recentRooms = await ctx.db.roomMember.findMany({
+        where: {
+          userId: input.userId,
+          isActive: true
+        },
+        orderBy: {
+          lastSeen: "desc"
+        },
+        take: 10,
+        include: {
+          room: {
+            include: {
+              messages: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                include: {
+                  user: true
+                }
+              },
+              _count: {
+                select: {
+                  roomMembers: {
+                    where: { isActive: true }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      return recentRooms.map(member => ({
+        roomId: member.room.id,
+        roomName: member.room.name,
+        lastMessage: member.room.messages[0]?.content,
+        lastMessageTime: member.room.messages[0]?.createdAt || member.lastSeen,
+        participantCount: member.room._count.roomMembers,
+        unreadCount: 0 // TODO: Implement proper unread count logic
+      }));
+    }),
+
+  saveMessage: publicProcedure
+    .input(z.object({
+      roomId: z.string(),
+      userId: z.string(),
+      content: z.string(),
+      type: z.enum(["TEXT", "IMAGE", "VIDEO", "SYSTEM"]).default("TEXT")
+    }))
+    .mutation(async ({ ctx, input }) => {
+      const message = await ctx.db.message.create({
+        data: {
+          roomId: input.roomId,
+          userId: input.userId,
+          content: input.content,
+          type: input.type
+        },
+        include: {
+          user: true
+        }
+      });
+
+      // Update room member last seen
+      await ctx.db.roomMember.updateMany({
+        where: {
+          userId: input.userId,
+          roomId: input.roomId
+        },
+        data: {
+          lastSeen: new Date()
+        }
+      });
+
+      return message;
+    }),
+
+  deleteRoom: publicProcedure
+    .input(z.object({
+      roomId: z.string(),
+      userId: z.string()
+    }))
+    .mutation(async ({ ctx, input }) => {
+      // Check if room exists
+      const room = await ctx.db.chatRoom.findUnique({
+        where: { id: input.roomId },
+        include: {
+          _count: {
+            select: {
+              roomMembers: {
+                where: { isActive: true }
+              }
+            }
+          },
+          roomMembers: {
+            where: { isActive: true }
+          }
+        }
+      });
+
+      if (!room) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Room not found"
+        });
+      }
+
+      // Check if user is the only active member
+      if (room._count.roomMembers !== 1 || room.roomMembers[0]?.userId !== input.userId) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Can only delete room if you are the only person in it"
+        });
+      }
+
+      // Delete the room (this will cascade delete messages and room members)
+      await ctx.db.chatRoom.delete({
+        where: { id: input.roomId }
+      });
+
+      return { success: true };
+    }),
+
+  getRoom: publicProcedure
+    .input(z.object({ roomId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const room = await ctx.db.chatRoom.findUnique({
+        where: { id: input.roomId },
+        include: {
+          roomMembers: {
+            where: { isActive: true },
+            include: {
+              user: true
+            }
+          },
+          messages: {
+            orderBy: { createdAt: "desc" },
+            take: 50,
+            include: {
+              user: true
+            }
+          }
+        }
+      });
+
+      if (!room) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "Room not found"
+        });
+      }
+
+      return {
+        id: room.id,
+        name: room.name,
+        maxParticipants: room.maxParticipants,
+        participants: room.roomMembers.map(member => ({
+          id: member.user.id,
+          name: member.user.displayName,
+          badges: JSON.parse(member.user.badges) as string[],
+          joinedAt: member.joinedAt,
+          trustScore: member.user.trustScore,
+          profileAge: member.user.profileAge,
+          messageCount: 0
+        })),
+        messages: room.messages.reverse().map(message => ({
+          id: message.id,
+          userId: message.userId,
+          userName: message.user.displayName,
+          content: message.content,
+          timestamp: message.createdAt,
+          type: 'text' as const
+        })),
+        createdAt: room.createdAt
+      };
+    }),
+
+  getUserStats: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const user = await ctx.db.user.findUnique({
+        where: { id: input.userId },
+        include: {
+          messages: true,
+          roomMembers: {
+            include: {
+              room: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found"
+        });
+      }
+
+      // Calculate stats
+      const messageCount = user.messages.length;
+      const roomsJoined = user.roomMembers.length;
+      const roomsCreated = await ctx.db.chatRoom.count({
+        where: {
+          // Note: We don't have a createdBy field, so this is placeholder
+          // You might want to add this to track who created rooms
+        }
+      });
+
+      const userStats: UserStats = {
+        profileAge: user.profileAge,
+        trustScore: user.trustScore,
+        messageCount,
+        roomsJoined,
+        roomsCreated: 0, // Placeholder until we add room creation tracking
+        daysActive: 1, // Placeholder - would need activity tracking
+        createdAt: user.createdAt
+      };
+
+      return userStats;
+    }),
+
+  getUserBadges: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      // First get user stats
+      const user = await ctx.db.user.findUnique({
+        where: { id: input.userId },
+        include: {
+          messages: true,
+          roomMembers: {
+            include: {
+              room: true
+            }
+          }
+        }
+      });
+
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found"
+        });
+      }
+
+      // Calculate stats
+      const messageCount = user.messages.length;
+      const roomsJoined = user.roomMembers.length;
+
+      const userStats: UserStats = {
+        profileAge: user.profileAge,
+        trustScore: user.trustScore,
+        messageCount,
+        roomsJoined,
+        roomsCreated: 0, // Placeholder
+        daysActive: Math.floor((new Date().getTime() - user.createdAt.getTime()) / (1000 * 60 * 60 * 24)) || 1,
+        createdAt: user.createdAt
+      };
+
+      // Calculate badges
+      const badges = calculateUserBadges(userStats);
+
+      return {
+        badges,
+        stats: userStats,
+        earnedBadges: badges.filter(b => b.isEarned),
+        totalBadges: badges.length,
+        earnedCount: badges.filter(b => b.isEarned).length
+      };
     }),
 });

@@ -32,48 +32,52 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signupMutation = api.post.signup.useMutation();
   const loginMutation = api.post.login.useMutation();
 
-  // Check for existing user on mount
+  // Get stored user ID for conditional query
+  const [storedUserId, setStoredUserId] = useState<string | null>(null);
+  
   useEffect(() => {
-    async function checkUser() {
-      const storedUserId = localStorage.getItem(STORAGE_KEY);
-      if (storedUserId) {
-        try {
-          // Create a direct fetch to avoid tRPC hook issues
-          const response = await fetch('/api/trpc/post.getCurrentUser', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              json: { userId: storedUserId },
-            }),
-          });
-          
-          if (response.ok) {
-            const data = await response.json();
-            if (data.result?.data) {
-              setUser(data.result.data);
-            } else {
-              localStorage.removeItem(STORAGE_KEY);
-            }
-          } else {
-            localStorage.removeItem(STORAGE_KEY);
-          }
-        } catch (error) {
-          console.error('Error checking user:', error);
-          localStorage.removeItem(STORAGE_KEY);
-        }
-      }
-      setLoading(false);
+    const userId = localStorage.getItem(STORAGE_KEY);
+    setStoredUserId(userId);
+  }, []);
+
+  // Use tRPC query to get current user if we have a stored ID
+  const { data: currentUserData, error: currentUserError, isLoading: isCheckingUser } = api.post.getCurrentUser.useQuery(
+    { userId: storedUserId! },
+    { 
+      enabled: !!storedUserId,
+      retry: false,
+      refetchOnWindowFocus: false
+    }
+  );
+
+  // Update user state based on query result
+  useEffect(() => {
+    if (storedUserId && isCheckingUser) {
+      return; // Still loading
     }
     
-    checkUser();
-  }, []);
+    if (currentUserError || (storedUserId && !currentUserData)) {
+      // User not found or error occurred, clear storage
+      localStorage.removeItem(STORAGE_KEY);
+      setUser(null);
+      // Don't call setStoredUserId(null) here to prevent infinite loop
+    } else if (currentUserData) {
+      // User found, update state
+      setUser(currentUserData);
+    }
+    
+    // Set loading to false only after we've checked the user
+    if (!storedUserId || !isCheckingUser) {
+      setLoading(false);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentUserData, currentUserError, isCheckingUser]); // Remove storedUserId to prevent loop
 
   async function signup(email: string, password: string, displayName: string) {
     try {
       const result = await signupMutation.mutateAsync({ email, password, displayName });
       setUser(result.user);
+      setStoredUserId(result.user.uid);
       localStorage.setItem(STORAGE_KEY, result.user.uid);
     } catch (error: unknown) {
       throw error;
@@ -84,6 +88,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const result = await loginMutation.mutateAsync({ email, password });
       setUser(result.user);
+      setStoredUserId(result.user.uid);
       localStorage.setItem(STORAGE_KEY, result.user.uid);
     } catch (error: unknown) {
       throw error;
@@ -93,6 +98,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function logout() {
     try {
       setUser(null);
+      setStoredUserId(null);
       localStorage.removeItem(STORAGE_KEY);
     } catch (error: unknown) {
       throw error;

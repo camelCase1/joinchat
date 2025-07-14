@@ -34,25 +34,26 @@ export default function Home() {
   }
 
   return (
-    <div className="h-screen">
-      {currentRoomId ? (
-        <div className="flex h-screen">
-          <RecentChatsSidebar 
-            currentRoomId={currentRoomId}
-            onJoinRoom={setCurrentRoomId}
-            onReturnToLobby={() => setCurrentRoomId(null)}
+    <div className="flex h-screen overflow-hidden">
+      {/* Sidebar - always visible */}
+      <div className="flex-shrink-0">
+        <RecentChatsSidebar 
+          currentRoomId={currentRoomId}
+          onJoinRoom={setCurrentRoomId}
+          onReturnToLobby={() => setCurrentRoomId(null)}
+        />
+      </div>
+      {/* Main content */}
+      <div className="flex-1 min-w-0">
+        {currentRoomId ? (
+          <ChatRoom 
+            roomId={currentRoomId} 
+            onLeaveRoom={() => setCurrentRoomId(null)} 
           />
-          <div className="flex-1">
-            <ChatRoom 
-              roomId={currentRoomId} 
-              onLeaveRoom={() => setCurrentRoomId(null)} 
-            />
-          </div>
-        </div>
-      ) : (
-        <RoomList onJoinRoom={setCurrentRoomId} />
-      )}
-      
+        ) : (
+          <RoomList onJoinRoom={setCurrentRoomId} />
+        )}
+      </div>
       <ConnectionStatus />
     </div>
   );
