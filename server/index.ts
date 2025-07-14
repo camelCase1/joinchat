@@ -55,24 +55,24 @@ const userProfiles = new Map<string, User>(); // userId -> User profile
 // Function to calculate user badges based on activity and trust score
 function calculateUserBadges(user: User): string[] {
   const badges: string[] = ['member'];
-  
+
   // Time-based badges
   const accountAge = Date.now() - user.profileAge.getTime();
   const daysOld = accountAge / (1000 * 60 * 60 * 24);
-  
+
   if (daysOld >= 30) badges.push('veteran');
   if (daysOld >= 7) badges.push('regular');
-  
+
   // Activity-based badges
   if (user.messageCount >= 100) badges.push('active');
   if (user.messageCount >= 500) badges.push('chatty');
   if (user.messageCount >= 1000) badges.push('superstar');
-  
+
   // Trust-based badges
   if (user.trustScore >= 50) badges.push('trusted');
   if (user.trustScore >= 80) badges.push('reliable');
   if (user.trustScore >= 95) badges.push('exemplary');
-  
+
   return badges;
 }
 
@@ -91,7 +91,7 @@ const IDLE_TIMEOUT = 30 * 60 * 1000; // 30 minutes
 
 function checkIdleUsers() {
   const now = new Date();
-  
+
   userActivity.forEach((lastActivity, userId) => {
     if (now.getTime() - lastActivity.getTime() > IDLE_TIMEOUT) {
       const socketId = userSockets.get(userId);
@@ -102,8 +102,8 @@ function checkIdleUsers() {
           if (userIndex !== -1) {
             const user = room.participants[userIndex];
             room.participants.splice(userIndex, 1);
-            io.to(roomId).emit('user-left', { 
-              userId, 
+            io.to(roomId).emit('user-left', {
+              userId,
               participantCount: room.participants.length,
               reason: 'idle'
             });
@@ -111,7 +111,7 @@ function checkIdleUsers() {
             emitSidebarPresence(roomId);
           }
         });
-        
+
         userSockets.delete(userId);
         userActivity.delete(userId);
       }
@@ -170,14 +170,14 @@ function emitSidebarPresence(roomId: string) {
 
 io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id);
-  
+
   // Send connection confirmation
   socket.emit('connected', { message: 'Connected to server successfully' });
 
   socket.on('join-room', async (data: { roomId: string; user: Omit<User, 'trustScore' | 'profileAge' | 'messageCount'> }) => {
     const { roomId, user: userData } = data;
     const room = chatRooms.get(roomId);
-    
+
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
       return;
@@ -185,10 +185,10 @@ io.on('connection', (socket) => {
 
     if (room.participants.length >= room.maxParticipants) {
       // Try to find an alternative room with the same name
-      const alternativeRoom = Array.from(chatRooms.values()).find(r => 
+      const alternativeRoom = Array.from(chatRooms.values()).find(r =>
         r.name === room.name && r.participants.length < r.maxParticipants
       );
-      
+
       if (alternativeRoom) {
         socket.emit('room-redirect', { newRoomId: alternativeRoom.id });
         return;
@@ -248,12 +248,12 @@ io.on('connection', (socket) => {
     } catch (error) {
       console.error('❌ Error updating room member in database:', error);
     }
-    
+
     socket.join(roomId);
     socket.emit('joined-room', { room, user });
     socket.to(roomId).emit('user-joined', { user, participantCount: room.participants.length });
     emitSidebarPresence(roomId);
-    
+
     // Load recent messages from database
     try {
       const recentMessages = await db.message.findMany({
@@ -268,7 +268,7 @@ io.on('connection', (socket) => {
           }
         }
       });
-      
+
       const formattedMessages = recentMessages.reverse().map(msg => ({
         id: msg.id,
         userId: msg.userId,
@@ -277,7 +277,7 @@ io.on('connection', (socket) => {
         timestamp: msg.createdAt,
         type: msg.type.toLowerCase() as 'text' | 'image' | 'video'
       }));
-      
+
       socket.emit('recent-messages', { messages: formattedMessages });
     } catch (error) {
       console.error('❌ Error loading messages from database:', error);
@@ -288,12 +288,12 @@ io.on('connection', (socket) => {
   socket.on('send-message', async (data: { roomId: string; message: Omit<Message, 'id' | 'timestamp'> }) => {
     const { roomId, message } = data;
     const room = chatRooms.get(roomId);
-    
+
     if (!room) return;
 
     // Update user activity and profile
     userActivity.set(message.userId, new Date());
-    
+
     // Update message count and trust score
     const user = userProfiles.get(message.userId);
     if (user) {
@@ -324,7 +324,7 @@ io.on('connection', (socket) => {
     }
 
     room.messages.push(newMessage);
-    
+
     // Keep only last 1000 messages in memory
     if (room.messages.length > 1000) {
       room.messages = room.messages.slice(-1000);
@@ -347,14 +347,14 @@ io.on('connection', (socket) => {
   socket.on('leave-room', (data: { roomId: string; userId: string }) => {
     const { roomId, userId } = data;
     const room = chatRooms.get(roomId);
-    
+
     if (room) {
       room.participants = room.participants.filter(p => p.id !== userId);
       socket.leave(roomId);
       socket.to(roomId).emit('user-left', { userId, participantCount: room.participants.length });
       emitSidebarPresence(roomId);
     }
-    
+
     userSockets.delete(userId);
   });
 
@@ -362,7 +362,7 @@ io.on('connection', (socket) => {
   socket.on('refresh-rooms-cache', async () => {
     try {
       const dbRooms = await db.chatRoom.findMany();
-      
+
       // Add any new rooms to memory cache
       dbRooms.forEach(room => {
         if (!chatRooms.has(room.id)) {
@@ -376,7 +376,7 @@ io.on('connection', (socket) => {
           });
         }
       });
-      
+
       console.log(`✅ Refreshed rooms cache: ${chatRooms.size} rooms`);
     } catch (error) {
       console.error('❌ Error refreshing rooms cache:', error);
@@ -441,10 +441,10 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
-    
+
     // Remove user from all rooms
     const userId = Array.from(userSockets.entries()).find(([, socketId]) => socketId === socket.id)?.[0];
-    
+
     if (userId) {
       chatRooms.forEach((room, roomId) => {
         const userIndex = room.participants.findIndex(p => p.id === userId);
@@ -453,7 +453,7 @@ io.on('connection', (socket) => {
           socket.to(roomId).emit('user-left', { userId, participantCount: room.participants.length });
         }
       });
-      
+
       userSockets.delete(userId);
     }
 
