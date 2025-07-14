@@ -375,6 +375,7 @@ export const postRouter = createTRPCRouter({
       type: z.enum(["TEXT", "IMAGE", "VIDEO", "SYSTEM"]).default("TEXT")
     }))
     .mutation(async ({ ctx, input }) => {
+      console.log('[TRPC] saveMessage called', input);
       const message = await ctx.db.message.create({
         data: {
           roomId: input.roomId,

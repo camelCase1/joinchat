@@ -163,17 +163,6 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
         }
       });
 
-      // Only save to database if it's not our own message (to avoid duplicates)
-      // Our own messages are already saved in handleSendMessage
-      if (message.userId !== user?.uid) {
-        saveMessageMutation.mutate({
-          roomId: message.roomId || roomId,
-          userId: message.userId,
-          content: message.content,
-          type: message.type.toUpperCase() as "TEXT" | "IMAGE" | "VIDEO" | "SYSTEM"
-        });
-      }
-
       // Update recent chats with new message
       if (room) {
         addToRecentChats(room.id, room.name, message.content);
@@ -231,8 +220,8 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
       return;
     }
 
+    // Do NOT generate or send an ID. Let the server handle it.
     const message = {
-      id: Date.now().toString(), // Temporary ID for immediate display
       userId: user.uid,
       userName: user.displayName || 'Anonymous',
       content: newMessage.trim(),
@@ -242,7 +231,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
 
     console.log('📝 Sending message:', message);
 
-    // Send via socket
+    // Send via socket (no ID)
     const sent = emitSafely('send-message', { roomId, message });
     console.log('📤 Socket emit result:', sent);
     setNewMessage('');

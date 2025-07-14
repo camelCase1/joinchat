@@ -2,7 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
-import { v4 as uuidv4 } from 'uuid';
+import { ulid } from 'ulid';
 import { db } from '../src/server/db.js';
 
 const app = express();
@@ -286,6 +286,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('send-message', async (data: { roomId: string; message: Omit<Message, 'id' | 'timestamp'> }) => {
+    console.log('SERVER: send-message called', data.message.content, data.message.userId);
     const { roomId, message } = data;
     const room = chatRooms.get(roomId);
 
@@ -304,7 +305,7 @@ io.on('connection', (socket) => {
 
     const newMessage: Message = {
       ...message,
-      id: uuidv4(),
+      id: ulid(),
       timestamp: new Date()
     };
 
