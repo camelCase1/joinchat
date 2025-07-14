@@ -26,7 +26,7 @@ export const postRouter = createTRPCRouter({
 
   // Authentication procedures
   signup: publicProcedure
-    .input(z.object({ 
+    .input(z.object({
       email: z.string().email(),
       password: z.string().min(6),
       displayName: z.string().min(1)
@@ -85,7 +85,7 @@ export const postRouter = createTRPCRouter({
       // Check password
       if (!user.password || !(await verifyPassword(input.password, user.password))) {
         throw new TRPCError({
-          code: "UNAUTHORIZED", 
+          code: "UNAUTHORIZED",
           message: "Invalid email or password"
         });
       }
@@ -122,18 +122,18 @@ export const postRouter = createTRPCRouter({
     }),
 
   updateUser: publicProcedure
-    .input(z.object({ 
+    .input(z.object({
       userId: z.string(),
       displayName: z.string().min(1).max(50).optional(),
       avatar: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
       const updateData: { displayName?: string; avatar?: string } = {};
-      
+
       if (input.displayName) {
         updateData.displayName = input.displayName;
       }
-      
+
       if (input.avatar) {
         updateData.avatar = input.avatar;
       }
@@ -183,7 +183,7 @@ export const postRouter = createTRPCRouter({
     .mutation(async ({ ctx, input }) => {
       // Check if room name already exists
       const existingRoom = await ctx.db.chatRoom.findFirst({
-        where: { 
+        where: {
           name: input.name
         }
       });
@@ -231,7 +231,7 @@ export const postRouter = createTRPCRouter({
     }),
 
   joinRoom: publicProcedure
-    .input(z.object({ 
+    .input(z.object({
       roomId: z.string(),
       userId: z.string()
     }))
@@ -255,7 +255,7 @@ export const postRouter = createTRPCRouter({
 
       if (!room) {
         throw new TRPCError({
-          code: "NOT_FOUND", 
+          code: "NOT_FOUND",
           message: "Room not found"
         });
       }
@@ -299,7 +299,7 @@ export const postRouter = createTRPCRouter({
     }),
 
   leaveRoom: publicProcedure
-    .input(z.object({ 
+    .input(z.object({
       roomId: z.string(),
       userId: z.string()
     }))

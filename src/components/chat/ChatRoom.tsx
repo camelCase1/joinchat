@@ -66,7 +66,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
   const leaveRoomMutation = api.post.leaveRoom.useMutation();
   const saveMessageMutation = api.post.saveMessage.useMutation();
   const deleteRoomMutation = api.post.deleteRoom.useMutation();
-  
+
   // Get room data from database as fallback
   const { data: roomData, isLoading: roomLoading } = api.post.getRoom.useQuery(
     { roomId },
@@ -88,17 +88,17 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
 
   const addToRecentChats = (roomId: string, roomName: string, lastMessage?: string) => {
     if (typeof window === 'undefined') return;
-    
+
     const existingChats = JSON.parse(localStorage.getItem('recentChats') || '[]');
     const chatIndex = existingChats.findIndex((chat: { roomId: string; roomName: string; lastMessageTime: string; lastMessage: string }) => chat.roomId === roomId);
-    
+
     const chatData = {
       roomId,
       roomName,
       lastMessageTime: new Date().toISOString(),
       lastMessage: lastMessage || ''
     };
-    
+
     if (chatIndex >= 0) {
       // Update existing chat
       existingChats[chatIndex] = chatData;
@@ -106,7 +106,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
       // Add new chat to beginning
       existingChats.unshift(chatData);
     }
-    
+
     // Keep only last 10 recent chats
     const recentChats = existingChats.slice(0, 10);
     localStorage.setItem('recentChats', JSON.stringify(recentChats));
@@ -131,7 +131,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
       console.log('✅ Joined room:', room);
       setRoom(room);
       setParticipants(room.participants);
-      
+
       // Add to recent chats
       addToRecentChats(room.id, room.name);
     });
@@ -144,12 +144,12 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
       console.log('📨 Received new message:', message);
       setMessages(prev => {
         // Check if we already have this message (our own message with temp ID)
-        const existingIndex = prev.findIndex(m => 
-          m.content === message.content && 
-          m.userId === message.userId && 
+        const existingIndex = prev.findIndex(m =>
+          m.content === message.content &&
+          m.userId === message.userId &&
           Math.abs(new Date(m.timestamp).getTime() - new Date(message.timestamp).getTime()) < 5000 // Within 5 seconds
         );
-        
+
         if (existingIndex !== -1) {
           // Replace the temporary message with the real one from server
           const newMessages = [...prev];
@@ -162,7 +162,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
           return [...prev, message];
         }
       });
-      
+
       // Only save to database if it's not our own message (to avoid duplicates)
       // Our own messages are already saved in handleSendMessage
       if (message.userId !== user?.uid) {
@@ -173,7 +173,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
           type: message.type.toUpperCase() as "TEXT" | "IMAGE" | "VIDEO" | "SYSTEM"
         });
       }
-      
+
       // Update recent chats with new message
       if (room) {
         addToRecentChats(room.id, room.name, message.content);
@@ -221,12 +221,12 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
 
   const handleSendMessage = (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!newMessage.trim() || !socket || !user) {
-      console.log('❌ Cannot send message:', { 
-        hasMessage: !!newMessage.trim(), 
-        hasSocket: !!socket, 
-        hasUser: !!user 
+      console.log('❌ Cannot send message:', {
+        hasMessage: !!newMessage.trim(),
+        hasSocket: !!socket,
+        hasUser: !!user
       });
       return;
     }
@@ -241,17 +241,6 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
     };
 
     console.log('📝 Sending message:', message);
-
-    // Add message to local state immediately for better UX
-    setMessages(prev => [...prev, message]);
-
-    // Save message to database
-    saveMessageMutation.mutate({
-      roomId,
-      userId: user.uid,
-      content: newMessage.trim(),
-      type: 'TEXT'
-    });
 
     // Send via socket
     const sent = emitSafely('send-message', { roomId, message });
@@ -270,10 +259,10 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
 
   const handleDeleteRoom = () => {
     if (!room || !user) return;
-    
+
     const confirmDelete = confirm(`Are you sure you want to delete the room "${room.name}"? This action cannot be undone.`);
     if (!confirmDelete) return;
-    
+
     deleteRoomMutation.mutate(
       { roomId, userId: user.uid },
       {
@@ -343,13 +332,13 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
     // Handle autocomplete for @mentions
     const words = value.split(' ');
     const lastWord = words[words.length - 1];
-    
+
     if (lastWord && lastWord.startsWith('@') && lastWord.length > 1) {
       const searchTerm = lastWord.substring(1).toLowerCase();
-      const matchingUsers = participants.filter(p => 
+      const matchingUsers = participants.filter(p =>
         p.name.toLowerCase().includes(searchTerm) && p.id !== user?.uid
       );
-      
+
       if (matchingUsers.length > 0) {
         setAutocompleteUsers(matchingUsers);
         setShowAutocomplete(true);
@@ -366,12 +355,12 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
     if (showAutocomplete) {
       if (e.key === 'ArrowDown') {
         e.preventDefault();
-        setAutocompleteIndex(prev => 
+        setAutocompleteIndex(prev =>
           prev < autocompleteUsers.length - 1 ? prev + 1 : 0
         );
       } else if (e.key === 'ArrowUp') {
         e.preventDefault();
-        setAutocompleteIndex(prev => 
+        setAutocompleteIndex(prev =>
           prev > 0 ? prev - 1 : autocompleteUsers.length - 1
         );
       } else if (e.key === 'Tab' || e.key === 'Enter') {
@@ -536,7 +525,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                 <span className="hidden md:inline">{deleteRoomMutation.isPending ? 'Deleting...' : 'Delete Room'}</span>
               </button>
             )}
-            
+
             <button
               onClick={logout}
               className="btn btn-secondary text-xs md:text-sm px-2 md:px-4"
@@ -564,10 +553,10 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
           ) : (
             filteredMessages.map((message) => (
               <div key={message.id} className="flex items-start space-x-4 p-4 bg-white rounded-lg shadow-sm relative">
-                <div 
+                <div
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
-                  style={{ 
-                    backgroundColor: `hsl(${message.userName.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                  style={{
+                    backgroundColor: `hsl(${message.userName.charCodeAt(0) * 137.508}deg, 60%, 60%)`
                   }}
                 >
                   {message.userName.charAt(0).toUpperCase()}
@@ -628,10 +617,10 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                       index === autocompleteIndex ? 'bg-red-50 border-l-4 border-red-500' : ''
                     }`}
                   >
-                    <div 
+                    <div
                       className="w-8 h-8 rounded-full flex items-center justify-center text-white text-sm font-medium"
-                      style={{ 
-                        backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                      style={{
+                        backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)`
                       }}
                     >
                       {participant.name.charAt(0).toUpperCase()}
@@ -641,7 +630,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                 ))}
               </div>
             )}
-            
+
             <div className="flex space-x-2 md:space-x-4">
               <input
                 ref={inputRef}
@@ -687,10 +676,10 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
           <div className="p-4 space-y-2 overflow-y-auto max-h-full">
             {participants.map((participant) => (
               <div key={participant.id} className="group flex items-center space-x-3 p-3 rounded-lg hover:bg-gray-50 transition-colors">
-                <div 
+                <div
                   className="w-12 h-12 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0 relative"
-                  style={{ 
-                    backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)` 
+                  style={{
+                    backgroundColor: `hsl(${participant.name.charCodeAt(0) * 137.508}deg, 60%, 60%)`
                   }}
                 >
                   {participant.name.charAt(0).toUpperCase()}
