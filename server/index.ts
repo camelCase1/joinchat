@@ -108,6 +108,7 @@ function checkIdleUsers() {
               reason: 'idle'
             });
             io.to(socketId).emit('kicked-for-idle');
+            emitSidebarPresence(roomId);
           }
         });
         
@@ -143,6 +144,29 @@ async function initializeRooms() {
 
 // Initialize rooms on server start
 initializeRooms();
+
+// Track typing users per room for sidebar indicator
+const roomTypingUsers = new Map<string, Set<string>>(); // roomId -> Set<userId>
+const userIdToName = new Map<string, string>(); // userId -> displayName
+
+// Helper to get all active userIds in a room
+async function getActiveUserIdsInRoom(roomId: string) {
+  const members = await db.roomMember.findMany({
+    where: { roomId, isActive: true },
+    select: { userId: true }
+  });
+  return members.map(m => m.userId);
+}
+
+function emitSidebarPresence(roomId: string) {
+  const room = chatRooms.get(roomId);
+  if (!room) return;
+  const onlineUserIds = room.participants.map(p => p.id);
+  const participantCount = room.participants.length;
+  for (const userId of onlineUserIds) {
+    io.to(userId).emit('sidebar-presence', { roomId, onlineUserIds, participantCount });
+  }
+}
 
 io.on('connection', (socket) => {
   console.log('✅ User connected:', socket.id);
@@ -228,6 +252,7 @@ io.on('connection', (socket) => {
     socket.join(roomId);
     socket.emit('joined-room', { room, user });
     socket.to(roomId).emit('user-joined', { user, participantCount: room.participants.length });
+    emitSidebarPresence(roomId);
     
     // Load recent messages from database
     try {
@@ -306,6 +331,17 @@ io.on('connection', (socket) => {
     }
 
     io.to(roomId).emit('new-message', newMessage);
+
+    // After saving message, emit sidebar-unread to all room members except sender
+    const userIds = await getActiveUserIdsInRoom(roomId);
+    for (const uid of userIds) {
+      if (uid !== message.userId) {
+        // Get unread count for this user in this room
+        const member = await db.roomMember.findFirst({ where: { userId: uid, roomId } });
+        const unreadCount = await db.message.count({ where: { roomId, createdAt: { gt: member?.lastSeen || new Date(0) }, userId: { not: uid } } });
+        io.to(uid).emit('sidebar-unread', { roomId, userId: uid, unreadCount });
+      }
+    }
   });
 
   socket.on('leave-room', (data: { roomId: string; userId: string }) => {
@@ -316,6 +352,7 @@ io.on('connection', (socket) => {
       room.participants = room.participants.filter(p => p.id !== userId);
       socket.leave(roomId);
       socket.to(roomId).emit('user-left', { userId, participantCount: room.participants.length });
+      emitSidebarPresence(roomId);
     }
     
     userSockets.delete(userId);
@@ -346,6 +383,62 @@ io.on('connection', (socket) => {
     }
   });
 
+  socket.on('typing', ({ roomId, userId, displayName }) => {
+    if (!roomId || !userId) return;
+    if (!roomTypingUsers.has(roomId)) roomTypingUsers.set(roomId, new Set());
+    roomTypingUsers.get(roomId)?.add(userId);
+    if (displayName) userIdToName.set(userId, displayName);
+    // Emit to all user sessions for this user
+    const typingSet = roomTypingUsers.get(roomId);
+    io.to(userId).emit('sidebar-typing', {
+      roomId,
+      typingUserNames: typingSet ? Array.from(typingSet).map(uid => userIdToName.get(uid) || 'Someone') : []
+    });
+  });
+
+  socket.on('stop-typing', ({ roomId, userId }) => {
+    if (!roomId || !userId) return;
+    const typingSet = roomTypingUsers.get(roomId);
+    if (typingSet) {
+      typingSet.delete(userId);
+      io.to(userId).emit('sidebar-typing', {
+        roomId,
+        typingUserNames: Array.from(typingSet).map(uid => userIdToName.get(uid) || 'Someone')
+      });
+    }
+  });
+
+  socket.on('message-read', ({ roomId, userId, messageId }) => {
+    socket.to(roomId).emit('message-read', { userId, messageId });
+  });
+
+  socket.on('read-room', async ({ roomId, userId }) => {
+    // Update lastSeen for this user in this room
+    await db.roomMember.updateMany({ where: { userId, roomId }, data: { lastSeen: new Date() } });
+    io.to(userId).emit('sidebar-unread', { roomId, userId, unreadCount: 0 });
+  });
+
+  socket.on('remove-room-from-recent', async ({ userId, roomId }) => {
+    try {
+      // Set isActive to false for this RoomMember entry in DB
+      await db.roomMember.updateMany({
+        where: { userId, roomId },
+        data: { isActive: false },
+      });
+      // Emit real-time update to all sockets for this user
+      io.to(userId).emit('recent-chats-updated', { userId });
+    } catch (err) {
+      socket.emit('error', { message: 'Failed to remove room from recent.' });
+    }
+  });
+
+  socket.on('register-user', ({ userId, displayName }) => {
+    if (userId) {
+      socket.join(userId);
+      if (displayName) userIdToName.set(userId, displayName);
+    }
+  });
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
     
@@ -362,6 +455,20 @@ io.on('connection', (socket) => {
       });
       
       userSockets.delete(userId);
+    }
+
+    // Remove user from all typing sets
+    let disconnectedUserId;
+    for (const [id, name] of userIdToName.entries()) {
+      if (userSockets.get(id) === socket.id) {
+        disconnectedUserId = id;
+        break;
+      }
+    }
+    if (disconnectedUserId) {
+      for (const [roomId, set] of roomTypingUsers.entries()) {
+        set.delete(disconnectedUserId);
+      }
     }
   });
 });

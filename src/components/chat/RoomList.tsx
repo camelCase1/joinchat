@@ -246,43 +246,45 @@ export function RoomList({ onJoinRoom }: RoomListProps) {
         )}
 
         {/* All Rooms */}
-        {otherRooms.length > 0 && (
-          <div className="mb-16">
-            <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 md:mb-8">All chat rooms</h2>
-            <div className="grid gap-4 md:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
-              {otherRooms.map((room) => (
-                <div key={room.id} className="room-card p-6">
-                  <div className="mb-4">
-                    <div className="flex items-center justify-between mb-3">
-                      <h3 className="text-xl font-semibold text-gray-900">{room.name}</h3>
-                      <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(room.participantCount, room.maxParticipants)}`}>
-                        {getStatusText(room.participantCount, room.maxParticipants)}
-                      </span>
+        <div className="overflow-y-auto max-h-[70vh]">
+          {otherRooms.length > 0 && (
+            <div className="mb-16">
+              <h2 className="text-2xl md:text-3xl font-bold text-gray-900 mb-6 md:mb-8">All chat rooms</h2>
+              <div className="grid gap-4 md:gap-6 grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+                {otherRooms.map((room) => (
+                  <div key={room.id} className="room-card p-6">
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-xl font-semibold text-gray-900">{room.name}</h3>
+                        <span className={`px-3 py-1 text-xs font-semibold rounded-full ${getStatusColor(room.participantCount, room.maxParticipants)}`}>
+                          {getStatusText(room.participantCount, room.maxParticipants)}
+                        </span>
+                      </div>
+                      <div className="flex items-center text-gray-600 text-sm">
+                        <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 715 0z" />
+                        </svg>
+                        <span>{room.participantCount} attendees</span>
+                      </div>
                     </div>
-                    <div className="flex items-center text-gray-600 text-sm">
-                      <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 715 0z" />
-                      </svg>
-                      <span>{room.participantCount} attendees</span>
-                    </div>
+                    
+                    <p className="text-gray-600 mb-6 leading-relaxed">
+                      Join the discussion about {room.name} and connect with others who share your interests.
+                    </p>
+                    
+                    <button
+                      onClick={() => onJoinRoom(room.id)}
+                      disabled={room.participantCount >= room.maxParticipants}
+                      className="w-full btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {room.participantCount >= room.maxParticipants ? 'Room Full' : 'Join conversation'}
+                    </button>
                   </div>
-                  
-                  <p className="text-gray-600 mb-6 leading-relaxed">
-                    Join the discussion about {room.name} and connect with others who share your interests.
-                  </p>
-                  
-                  <button
-                    onClick={() => onJoinRoom(room.id)}
-                    disabled={room.participantCount >= room.maxParticipants}
-                    className="w-full btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {room.participantCount >= room.maxParticipants ? 'Room Full' : 'Join conversation'}
-                  </button>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
 
         {filteredRooms.length === 0 && searchTerm && (
           <div className="text-center mt-16">

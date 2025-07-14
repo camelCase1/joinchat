@@ -44,8 +44,8 @@ interface ChatRoomProps {
 }
 
 export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
-  const { socket, connected, emitSafely } = useSocket();
-  const { user, logout } = useAuth();
+  const { socket, connected, error: socketError, emitSafely } = useSocket();
+  const { user, logout, isGuest } = useAuth();
   const [room, setRoom] = useState<ChatRoom | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
@@ -57,6 +57,9 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
   const [autocompleteIndex, setAutocompleteIndex] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [typingUsers, setTypingUsers] = useState<Set<string>>(new Set());
+  const [readReceipts, setReadReceipts] = useState<Record<string, Set<string>>>({});
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   // tRPC mutations and queries
   const joinRoomMutation = api.post.joinRoom.useMutation();
@@ -325,9 +328,17 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
     toast.success('User unmuted');
   };
 
+  // Typing indicator logic
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value;
     setNewMessage(value);
+    if (socket && user) {
+      socket.emit('typing', { roomId, userId: user.uid });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('stop-typing', { roomId, userId: user.uid });
+      }, 2000);
+    }
 
     // Handle autocomplete for @mentions
     const words = value.split(' ');
@@ -396,6 +407,53 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
     if (score >= 40) return 'text-yellow-600';
     return 'text-red-600';
   };
+
+  // Listen for typing and read receipt events
+  useEffect(() => {
+    if (!socket || !user) return;
+    const handleTyping = ({ userId }: { userId: string }) => {
+      setTypingUsers(prev => new Set(prev).add(userId));
+    };
+    const handleStopTyping = ({ userId }: { userId: string }) => {
+      setTypingUsers(prev => {
+        const next = new Set(prev);
+        next.delete(userId);
+        return next;
+      });
+    };
+    const handleMessageRead = ({ userId, messageId }: { userId: string; messageId: string }) => {
+      setReadReceipts(prev => {
+        const next = { ...prev };
+        if (!next[messageId]) next[messageId] = new Set();
+        next[messageId].add(userId);
+        return next;
+      });
+    };
+    socket.on('typing', handleTyping);
+    socket.on('stop-typing', handleStopTyping);
+    socket.on('message-read', handleMessageRead);
+    return () => {
+      socket.off('typing', handleTyping);
+      socket.off('stop-typing', handleStopTyping);
+      socket.off('message-read', handleMessageRead);
+    };
+  }, [socket, user, roomId]);
+
+  // Emit message-read for the latest message when messages change
+  useEffect(() => {
+    if (!socket || !user || messages.length === 0) return;
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage) {
+      socket.emit('message-read', { roomId, userId: user.uid, messageId: lastMessage.id });
+    }
+  }, [messages, socket, user, roomId]);
+
+  // Show a toast if there is a socket connection error
+  useEffect(() => {
+    if (socketError) {
+      toast.error(socketError);
+    }
+  }, [socketError]);
 
   if (!room && roomLoading) {
     return (
@@ -492,7 +550,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
         </div>
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 scroll-smooth bg-gray-50">
+        <div className="flex-1 overflow-y-auto p-4 md:p-8 space-y-4 md:space-y-6 scroll-smooth bg-gray-50" style={{ minHeight: 0 }}>
           {messages.length === 0 ? (
             <div className="text-center mt-16">
               <div className="w-16 h-16 bg-gray-100 rounded-2xl mx-auto mb-6 flex items-center justify-center">
@@ -505,7 +563,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
             </div>
           ) : (
             filteredMessages.map((message) => (
-              <div key={message.id} className="flex items-start space-x-4 p-4 bg-white rounded-lg shadow-sm">
+              <div key={message.id} className="flex items-start space-x-4 p-4 bg-white rounded-lg shadow-sm relative">
                 <div 
                   className="w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm flex-shrink-0"
                   style={{ 
@@ -523,15 +581,41 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                   </div>
                   <p className="text-gray-700 leading-relaxed break-words">{message.content}</p>
                 </div>
+                {/* Read receipt indicator */}
+                {readReceipts[message.id] && readReceipts[message.id]!.size > 0 && (
+                  <div className="absolute top-2 right-2 text-xs text-green-500">
+                    ✓ Read by {readReceipts[message.id] ? readReceipts[message.id]!.size : 0}
+                  </div>
+                )}
               </div>
             ))
           )}
-          <div ref={messagesEndRef} />
+          {/* Typing indicator */}
+          {typingUsers.size > 0 && Array.from(typingUsers).some(uid => uid !== user?.uid) && (() => {
+            const typingNames = Array.from(typingUsers)
+              .filter(uid => uid !== user?.uid)
+              .map(uid => {
+                const participant = (participants || []).find(p => p.id === uid);
+                return participant ? participant.name : 'Someone';
+              });
+            if (typingNames.length === 0) return null;
+            return (
+              <div className="text-xs text-gray-500 italic px-2 py-1">
+                {typingNames.join(', ')}
+                {typingNames.length === 1 ? ' is typing...' : ' are typing...'}
+              </div>
+            );
+          })()}
+          {/* Always keep this at the end for scroll-to-bottom */}
+          <div ref={messagesEndRef} style={{ height: 1 }} />
         </div>
 
         {/* Message Input */}
         <div className="bg-white border-t border-gray-200 p-4 md:p-6">
           <form onSubmit={handleSendMessage} className="relative">
+            {isGuest && (
+              <div className="flex-1 text-center text-gray-500 italic">Guest users cannot send messages. <span className="ml-2">🔒</span></div>
+            )}
             {/* Autocomplete Dropdown */}
             {showAutocomplete && (
               <div className="absolute bottom-full left-0 right-16 bg-white border border-gray-200 rounded-lg shadow-lg mb-2 max-h-48 overflow-y-auto z-10">
@@ -564,13 +648,14 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                 value={newMessage}
                 onChange={handleInputChange}
                 onKeyDown={handleKeyDown}
-                placeholder={`Message #${room.name}...`}
+                placeholder={isGuest ? 'Login to send messages...' : `Message #${room.name}...`}
                 className="flex-1 px-3 md:px-4 py-2 md:py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm md:text-base"
                 maxLength={500}
+                disabled={isGuest}
               />
               <button
                 type="submit"
-                disabled={!newMessage.trim()}
+                disabled={isGuest || !newMessage.trim()}
                 className="btn btn-primary px-3 md:px-6 disabled:opacity-50 disabled:cursor-not-allowed text-sm md:text-base"
               >
                 <svg className="w-4 h-4 md:w-5 md:h-5 md:mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -630,13 +715,6 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                   <div className="flex items-center space-x-2 mt-1">
                     <div className="w-2 h-2 bg-green-500 rounded-full"></div>
                     <span className="text-sm text-gray-500">Online</span>
-                  </div>
-                  <div className="mt-2">
-                    <BadgeTags 
-                      badges={getParticipantBadges(participant)} 
-                      maxDisplay={2} 
-                      size="sm" 
-                    />
                   </div>
                 </div>
                 <div className="flex items-center">

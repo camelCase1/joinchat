@@ -16,6 +16,10 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
   const [activeTab, setActiveTab] = useState<'general' | 'badges' | 'privacy'>('general');
   const [displayName, setDisplayName] = useState(user?.displayName || '');
 
+  // Add local state for privacy toggles
+  const [showOnlineStatus, setShowOnlineStatus] = useState(true);
+  const [profileVisible, setProfileVisible] = useState(true);
+
   // Get user data with badges
   const { data: userData, refetch: refetchUser } = api.post.getCurrentUser.useQuery(
     { userId: user?.uid || '' },
@@ -177,8 +181,15 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
                         <p className="font-medium text-gray-900">Show Online Status</p>
                         <p className="text-sm text-gray-500">Let others see when you&apos;re online</p>
                       </div>
-                      <button className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-red-500 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                        <span className="translate-x-5 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                      <button
+                        type="button"
+                        aria-pressed={showOnlineStatus}
+                        onClick={() => setShowOnlineStatus(v => !v)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${showOnlineStatus ? 'bg-red-500' : 'bg-gray-300'}`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${showOnlineStatus ? 'translate-x-5' : 'translate-x-0'}`}
+                        ></span>
                       </button>
                     </div>
                     
@@ -187,8 +198,15 @@ export function ProfileSettings({ isOpen, onClose }: ProfileSettingsProps) {
                         <p className="font-medium text-gray-900">Profile Visibility</p>
                         <p className="text-sm text-gray-500">Allow others to view your profile</p>
                       </div>
-                      <button className="relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent bg-red-500 transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
-                        <span className="translate-x-5 pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out"></span>
+                      <button
+                        type="button"
+                        aria-pressed={profileVisible}
+                        onClick={() => setProfileVisible(v => !v)}
+                        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ${profileVisible ? 'bg-red-500' : 'bg-gray-300'}`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${profileVisible ? 'translate-x-5' : 'translate-x-0'}`}
+                        ></span>
                       </button>
                     </div>
                   </div>

@@ -24,6 +24,34 @@ A community-owned, AI-moderated messaging platform combining the best of Discord
 
 ## Getting Started
 
+### Quickstart (First Time Setup)
+
+1. **Clone the repo and install dependencies:**
+   ```bash
+   git clone <your-repo-url>
+   cd joinchat
+   npm install
+   ```
+2. **Copy environment variables:**
+   ```bash
+   cp .env.example .env
+   # Edit .env with your Firebase config (see below)
+   ```
+3. **Set up the database:**
+   ```bash
+   npm run db:push
+   # If you see a migration error, run:
+   npm run db:reset
+   ```
+4. **Start everything (frontend + backend):**
+   ```bash
+   npm run dev:full
+   ```
+5. **Open your browser:**
+   - Go to http://localhost:3000
+
+---
+
 ### Prerequisites
 
 - Node.js 18+ 
@@ -66,22 +94,21 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=your-measurement-id
 5. Set up the database:
 ```bash
 npm run db:push
+# If you see a migration error, run:
+npm run db:reset
 ```
 
 ### Development
 
-Run both the Next.js frontend and Express.js backend:
-
+**Recommended:**
 ```bash
 npm run dev:full
 ```
-
-This will start:
+This will start both the Next.js frontend and Socket.io backend together:
 - Next.js app on http://localhost:3000
 - Socket.io server on http://localhost:3001
 
 Or run them separately:
-
 ```bash
 # Terminal 1 - Frontend
 npm run dev
@@ -93,9 +120,9 @@ npm run dev:server
 ### Usage
 
 1. Open http://localhost:3000
-2. Create an account or sign in
+2. Create an account, sign in, or use "Login as Guest"
 3. Browse available chat rooms
-4. Join a room and start chatting!
+4. Join a room and start chatting (guests are read-only)
 
 ## Project Structure
 

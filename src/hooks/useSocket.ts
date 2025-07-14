@@ -15,8 +15,10 @@ export function useSocket() {
       // Robust URL selection
       let socketUrl = '';
       if (typeof window !== 'undefined') {
-        if (process.env.NODE_ENV === 'production') {
-          socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL || window.location.origin;
+        if (process.env.NEXT_PUBLIC_SOCKET_URL) {
+          socketUrl = process.env.NEXT_PUBLIC_SOCKET_URL;
+        } else if (process.env.NODE_ENV === 'production') {
+          socketUrl = window.location.origin.replace(/^http/, 'ws');
         } else {
           // Use current hostname for dev (handles localhost, 127.0.0.1, LAN IP)
           socketUrl = `http://${window.location.hostname}:3001`;
@@ -24,12 +26,13 @@ export function useSocket() {
       } else {
         socketUrl = 'http://localhost:3001';
       }
+      console.log('[Socket] Connecting to:', socketUrl);
       socketInstance = io(socketUrl, {
         transports: ['websocket', 'polling'],
-        timeout: 5000,
+        timeout: 8000,
         reconnection: true,
         reconnectionDelay: 1000,
-        reconnectionAttempts: 5,
+        reconnectionAttempts: 10,
       });
       
       socketInstance.on('connect', () => {
@@ -48,9 +51,9 @@ export function useSocket() {
       });
 
       socketInstance.on('connect_error', (error) => {
-        console.error('❌ Socket connection error:', error.message);
+        console.error('❌ Socket connection error:', error.message, '\nURL:', socketUrl);
         setConnected(false);
-        setError(error.message);
+        setError(`Socket connection error: ${error.message}\nURL: ${socketUrl}`);
       });
 
       socketInstance.on('reconnect', (attemptNumber) => {
@@ -60,8 +63,8 @@ export function useSocket() {
       });
 
       socketInstance.on('reconnect_error', (error) => {
-        console.error('❌ Socket reconnection failed:', error.message);
-        setError(error.message);
+        console.error('❌ Socket reconnection failed:', error.message, '\nURL:', socketUrl);
+        setError(`Socket reconnection failed: ${error.message}\nURL: ${socketUrl}`);
       });
 
       setSocket(socketInstance);

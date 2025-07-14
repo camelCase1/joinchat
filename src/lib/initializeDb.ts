@@ -2,13 +2,7 @@ import { db } from "~/server/db";
 
 export async function initializeDatabase() {
   try {
-    // Create password table if it doesn't exist
-    await db.$executeRaw`
-      CREATE TABLE IF NOT EXISTS user_passwords (
-        userId TEXT PRIMARY KEY,
-        passwordHash TEXT NOT NULL
-      )
-    `;
+    // Removed user_passwords table creation; password is now in User table
 
     // Check if default rooms exist
     const existingRooms = await db.chatRoom.findMany();

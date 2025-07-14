@@ -8,7 +8,8 @@ import { SignupForm } from '~/components/auth/SignupForm';
 
 export default function AuthPage() {
   const [isLogin, setIsLogin] = useState(true);
-  const { user, loading } = useAuth();
+  const [guestLoading, setGuestLoading] = useState(false);
+  const { user, loading, guestLogin } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
@@ -17,7 +18,7 @@ export default function AuthPage() {
     }
   }, [user, loading, router]);
 
-  if (loading) {
+  if (loading || guestLoading) {
     return (
       <div className="min-h-screen auth-container flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
@@ -27,6 +28,16 @@ export default function AuthPage() {
 
   if (user) {
     return null; // Will redirect
+  }
+
+  async function handleGuestLogin() {
+    setGuestLoading(true);
+    try {
+      await guestLogin();
+      router.push('/');
+    } finally {
+      setGuestLoading(false);
+    }
   }
 
   return (
@@ -50,6 +61,16 @@ export default function AuthPage() {
         ) : (
           <SignupForm onToggleMode={() => setIsLogin(true)} />
         )}
+        <div className="mt-6 flex flex-col items-center">
+          <button
+            onClick={handleGuestLogin}
+            className="btn btn-secondary w-full h-12 text-lg font-semibold mt-2"
+            disabled={guestLoading}
+          >
+            {guestLoading ? 'Logging in as Guest...' : 'Login as Guest'}
+          </button>
+          <span className="text-xs text-gray-500 mt-2">Read-only access</span>
+        </div>
       </div>
     </div>
   );

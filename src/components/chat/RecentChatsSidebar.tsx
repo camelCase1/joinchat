@@ -3,8 +3,10 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '~/contexts/AuthContext';
 import { api } from '~/trpc/react';
+import toast from 'react-hot-toast';
 import { ProfileSettings } from '~/components/profile/ProfileSettings';
 import { BadgeTags } from '~/components/ui/BadgeTags';
+import { useSocket } from '~/hooks/useSocket';
 
 interface RecentChat {
   roomId: string;
@@ -25,6 +27,11 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
   const { user, logout } = useAuth();
   const [recentChats, setRecentChats] = useState<RecentChat[]>([]);
   const [showProfileSettings, setShowProfileSettings] = useState(false);
+  const [deleteModal, setDeleteModal] = useState<{ open: boolean; chat?: RecentChat }>({ open: false });
+  const [sidebarTyping, setSidebarTyping] = useState<Record<string, string[]>>({});
+  const [sidebarUnread, setSidebarUnread] = useState<Record<string, number>>({});
+  const [sidebarPresence, setSidebarPresence] = useState<Record<string, { onlineUserIds: string[]; participantCount: number }>>({});
+  const { socket, connected } = useSocket();
 
   // Fetch recent rooms from database
   const { data: recentRooms = [], refetch: refetchRecentRooms } = api.post.getUserRecentRooms.useQuery(
@@ -48,6 +55,9 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
     }
   );
 
+  const deleteMessagesMutation = api.post.deleteUserMessagesInRoom.useMutation();
+  const removeRoomFromRecentMutation = api.post.removeRoomFromRecent.useMutation();
+
   useEffect(() => {
     if (recentRooms) {
       setRecentChats(prev => {
@@ -62,6 +72,41 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
       });
     }
   }, [recentRooms]);
+
+  useEffect(() => {
+    if (socket && user?.uid) {
+      socket.emit('register-user', { userId: user.uid, displayName: user.displayName });
+      const handleRecentChatsUpdated = (data: { userId: string }) => {
+        if (data.userId === user.uid) {
+          refetchRecentRooms();
+        }
+      };
+      socket.on('recent-chats-updated', handleRecentChatsUpdated);
+      // Sidebar typing indicator
+      const handleSidebarTyping = (data: { roomId: string; typingUserNames: string[] }) => {
+        setSidebarTyping(prev => ({ ...prev, [data.roomId]: data.typingUserNames }));
+      };
+      socket.on('sidebar-typing', handleSidebarTyping);
+      // Sidebar unread badge
+      const handleSidebarUnread = (data: { roomId: string; userId: string; unreadCount: number }) => {
+        if (data.userId === user.uid) {
+          setSidebarUnread(prev => ({ ...prev, [data.roomId]: data.unreadCount }));
+        }
+      };
+      socket.on('sidebar-unread', handleSidebarUnread);
+      // Sidebar presence
+      const handleSidebarPresence = (data: { roomId: string; onlineUserIds: string[]; participantCount: number }) => {
+        setSidebarPresence(prev => ({ ...prev, [data.roomId]: { onlineUserIds: data.onlineUserIds, participantCount: data.participantCount } }));
+      };
+      socket.on('sidebar-presence', handleSidebarPresence);
+      return () => {
+        socket.off('recent-chats-updated', handleRecentChatsUpdated);
+        socket.off('sidebar-typing', handleSidebarTyping);
+        socket.off('sidebar-unread', handleSidebarUnread);
+        socket.off('sidebar-presence', handleSidebarPresence);
+      };
+    }
+  }, [socket, user?.uid, user?.displayName]);
 
   const addToRecentChats = useCallback((roomId: string, roomName: string, lastMessage?: string) => {
     if (!user?.uid) return;
@@ -92,6 +137,32 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
     if (diffHours < 24) return `${diffHours}h`;
     if (diffDays < 7) return `${diffDays}d`;
     return date.toLocaleDateString();
+  };
+
+  // Delete chat handler (local only, add backend call if needed)
+  const handleDeleteChat = async (roomId: string) => {
+    setRecentChats(prev => prev.filter(chat => chat.roomId !== roomId));
+    // Remove from localStorage as well
+    if (typeof window !== 'undefined') {
+      const stored = JSON.parse(localStorage.getItem('recentChats') || '[]');
+      const updated = stored.filter((chat: any) => chat.roomId !== roomId);
+      localStorage.setItem('recentChats', JSON.stringify(updated));
+    }
+    // Delete messages from backend
+    if (user?.uid) {
+      try {
+        await deleteMessagesMutation.mutateAsync({ userId: user.uid, roomId });
+        await removeRoomFromRecentMutation.mutateAsync({ userId: user.uid, roomId });
+        if (socket && connected) {
+          socket.emit('remove-room-from-recent', { userId: user.uid, roomId });
+        }
+        toast.success('Chat and messages deleted!');
+        void refetchRecentRooms();
+      } catch (err: any) {
+        toast.error('Failed to delete messages: ' + (err?.message || 'Unknown error'));
+      }
+    }
+    setDeleteModal({ open: false });
   };
 
   // Remove global window assignment to prevent infinite loops
@@ -125,11 +196,7 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
               <div className="text-left flex-1">
                 <p className="font-medium text-gray-900">{user.displayName}</p>
                 <p className="text-sm text-gray-500">Online</p>
-                {userBadges && userBadges.badges && (
-                  <div className="mt-1">
-                    <BadgeTags badges={userBadges.badges} maxDisplay={2} size="sm" />
-                  </div>
-                )}
+                {/* BadgeTags removed: badges only visible in profile */}
               </div>
             </button>
           )}
@@ -167,55 +234,89 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
             ) : (
               <div className="space-y-2">
                 {recentChats.map((chat) => (
-                  <button
-                    key={chat.roomId}
-                    onClick={() => {
-                      onJoinRoom(chat.roomId);
-                      clearUnreadCount(chat.roomId);
-                    }}
-                    className={`w-full text-left p-3 rounded-lg transition-colors relative ${
-                      currentRoomId === chat.roomId 
-                        ? 'bg-red-500 text-white' 
-                        : 'hover:bg-gray-100 text-gray-700'
-                    }`}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-                        currentRoomId === chat.roomId ? 'bg-red-400' : 'bg-gray-200'
-                      }`}>
-                        <span className={`font-bold ${
-                          currentRoomId === chat.roomId ? 'text-white' : 'text-gray-600'
-                        }`}>#</span>
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="font-medium truncate">{chat.roomName}</p>
-                          {chat.lastMessageTime && (
-                            <span className={`text-xs ${
-                              currentRoomId === chat.roomId ? 'text-red-100' : 'text-gray-500'
-                            }`}>
-                              {formatRelativeTime(chat.lastMessageTime)}
-                            </span>
+                  <div key={chat.roomId} className="relative group">
+                    <button
+                      onClick={() => {
+                        if (currentRoomId !== chat.roomId) {
+                          onJoinRoom(chat.roomId);
+                          clearUnreadCount(chat.roomId);
+                          if (socket && user?.uid) {
+                            socket.emit('read-room', { roomId: chat.roomId, userId: user.uid });
+                          }
+                        } else {
+                          onJoinRoom(chat.roomId);
+                          clearUnreadCount(chat.roomId);
+                          if (socket && user?.uid) {
+                            socket.emit('read-room', { roomId: chat.roomId, userId: user.uid });
+                          }
+                        }
+                      }}
+                      className={`w-full text-left p-3 rounded-lg transition-colors relative ${
+                        currentRoomId === chat.roomId 
+                          ? 'bg-red-500 text-white' 
+                          : 'hover:bg-gray-100 text-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
+                          currentRoomId === chat.roomId ? 'bg-red-400' : 'bg-gray-200'
+                        }`}>
+                          <span className={`font-bold ${
+                            currentRoomId === chat.roomId ? 'text-white' : 'text-gray-600'
+                          }`}>#</span>
+                          {/* Online dot */}
+                          {(sidebarPresence[chat.roomId]?.onlineUserIds?.length ?? 0) > 0 && (
+                            <span className="absolute top-1 right-1 w-3 h-3 rounded-full bg-green-500 border-2 border-white"></span>
                           )}
                         </div>
-                        {chat.lastMessage && (
-                          <p className={`text-sm truncate mt-1 ${
-                            currentRoomId === chat.roomId ? 'text-red-100' : 'text-gray-500'
-                          }`}>
-                            {chat.lastMessage}
-                          </p>
-                        )}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between">
+                            <p className="font-medium truncate">{chat.roomName}</p>
+                            {/* Unread badge */}
+                            {(sidebarUnread[chat.roomId] ?? 0) > 0 && (
+                              <span className="ml-2 inline-block min-w-[20px] px-2 py-0.5 rounded-full bg-red-500 text-white text-xs text-center">
+                                {(sidebarUnread[chat.roomId] ?? 0)}
+                              </span>
+                            )}
+                          </div>
+                          {/* Typing indicator */}
+                          {sidebarTyping[chat.roomId] && sidebarTyping[chat.roomId].length > 0 && (
+                            <div className="text-xs text-red-500 mt-1">
+                              {sidebarTyping[chat.roomId]?.length === 1
+                                ? `${sidebarTyping[chat.roomId]?.[0]} is typing...`
+                                : `${sidebarTyping[chat.roomId]?.join(', ')} are typing...`}
+                            </div>
+                          )}
+                          {/* Participant count (replace last message) */}
+                          <div className="text-xs text-gray-400 mt-1">
+                            {(sidebarPresence[chat.roomId]?.participantCount ?? 0)} online
+                          </div>
+                        </div>
+                        {/* Trashcan button */}
+                        <button
+                          type="button"
+                          className="ml-2 p-1 rounded hover:bg-red-100 text-gray-400 hover:text-red-600 transition-colors"
+                          title="Delete chat"
+                          onClick={e => {
+                            e.stopPropagation();
+                            setDeleteModal({ open: true, chat });
+                          }}
+                        >
+                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
                       </div>
-                    </div>
-                    
-                    {chat.unreadCount > 0 && currentRoomId !== chat.roomId && (
-                      <div className="absolute top-2 right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
-                        <span className="text-xs font-bold text-white">
-                          {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
-                        </span>
-                      </div>
-                    )}
-                  </button>
+                      {/* Unread badge ... */}
+                      {chat.unreadCount > 0 && currentRoomId !== chat.roomId && (
+                        <div className="absolute top-2 right-2 w-5 h-5 bg-red-500 rounded-full flex items-center justify-center">
+                          <span className="text-xs font-bold text-white">
+                            {chat.unreadCount > 9 ? '9+' : chat.unreadCount}
+                          </span>
+                        </div>
+                      )}
+                    </button>
+                  </div>
                 ))}
               </div>
             )}
@@ -236,6 +337,32 @@ export function RecentChatsSidebar({ currentRoomId, onJoinRoom, onReturnToLobby 
         isOpen={showProfileSettings}
         onClose={() => setShowProfileSettings(false)}
       />
+      {/* Delete confirmation modal */}
+      {deleteModal.open && deleteModal.chat && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+          <div className="bg-white rounded-lg shadow-xl p-8 max-w-md w-full text-center">
+            <svg className="w-12 h-12 mx-auto mb-4 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1H8a1 1 0 00-1 1v3M4 7h16" />
+            </svg>
+            <h2 className="text-xl font-bold mb-2">Delete Chat?</h2>
+            <p className="mb-6 text-gray-600">Are you sure you want to delete <span className="font-semibold">{deleteModal.chat.roomName}</span> and all your messages within it? This action cannot be undone.</p>
+            <div className="flex justify-center space-x-4">
+              <button
+                className="px-4 py-2 rounded bg-gray-200 text-gray-700 hover:bg-gray-300"
+                onClick={() => setDeleteModal({ open: false })}
+              >
+                Cancel
+              </button>
+              <button
+                className="px-4 py-2 rounded bg-red-600 text-white hover:bg-red-700 font-semibold"
+                onClick={() => handleDeleteChat(deleteModal.chat!.roomId)}
+              >
+                Yes, delete this chat
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

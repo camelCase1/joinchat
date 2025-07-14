@@ -15,6 +15,8 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
+  guestLogin: () => Promise<void>;
+  isGuest?: boolean;
 }
 
 const AuthContext = createContext<AuthContextType>({} as AuthContextType);
@@ -28,6 +30,7 @@ const STORAGE_KEY = 'joinchat_user_id';
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<SimpleUser | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isGuest, setIsGuest] = useState(false);
 
   const signupMutation = api.post.signup.useMutation();
   const loginMutation = api.post.login.useMutation();
@@ -37,7 +40,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   
   useEffect(() => {
     const userId = localStorage.getItem(STORAGE_KEY);
+    const guestFlag = localStorage.getItem('joinchat_guest');
     setStoredUserId(userId);
+    setIsGuest(guestFlag === '1');
   }, []);
 
   // Use tRPC query to get current user if we have a stored ID
@@ -60,10 +65,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // User not found or error occurred, clear storage
       localStorage.removeItem(STORAGE_KEY);
       setUser(null);
+      setIsGuest(false);
       // Don't call setStoredUserId(null) here to prevent infinite loop
     } else if (currentUserData) {
       // User found, update state
       setUser(currentUserData);
+      setIsGuest(false);
     }
     
     // Set loading to false only after we've checked the user
@@ -95,11 +102,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
+  async function guestLogin() {
+    const guestId = 'guest-' + Math.random().toString(36).substring(2, 10);
+    const guestUser = { uid: guestId, email: '', displayName: 'Guest' };
+    setUser(guestUser);
+    setIsGuest(true);
+    localStorage.setItem('joinchat_guest', '1');
+    localStorage.removeItem(STORAGE_KEY);
+  }
+
   async function logout() {
     try {
       setUser(null);
       setStoredUserId(null);
+      setIsGuest(false);
       localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem('joinchat_guest');
     } catch (error: unknown) {
       throw error;
     }
@@ -111,6 +129,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     login,
     logout,
     loading,
+    guestLogin,
+    isGuest,
   };
 
   return (

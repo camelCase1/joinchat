@@ -49,15 +49,8 @@ export const postRouter = createTRPCRouter({
         data: {
           email: input.email,
           displayName: input.displayName,
+          password: await hashPassword(input.password),
           badges: JSON.stringify(['member']),
-        }
-      });
-
-      // Store password using Prisma model
-      await ctx.db.userPassword.create({
-        data: {
-          userId: user.id,
-          passwordHash: await hashPassword(input.password)
         }
       });
 
@@ -76,9 +69,10 @@ export const postRouter = createTRPCRouter({
       password: z.string()
     }))
     .mutation(async ({ ctx, input }) => {
-      // Find user
+      // Find user (include password)
       const user = await ctx.db.user.findUnique({
-        where: { email: input.email }
+        where: { email: input.email },
+        select: { id: true, email: true, displayName: true, password: true }
       });
 
       if (!user) {
@@ -89,11 +83,7 @@ export const postRouter = createTRPCRouter({
       }
 
       // Check password
-      const passwordRecord = await ctx.db.userPassword.findUnique({
-        where: { userId: user.id }
-      });
-
-      if (!passwordRecord || !(await verifyPassword(input.password, passwordRecord.passwordHash))) {
+      if (!user.password || !(await verifyPassword(input.password, user.password))) {
         throw new TRPCError({
           code: "UNAUTHORIZED", 
           message: "Invalid email or password"
@@ -346,7 +336,7 @@ export const postRouter = createTRPCRouter({
             include: {
               messages: {
                 orderBy: { createdAt: "desc" },
-                take: 1,
+                take: 50, // fetch last 50 messages for unread count
                 include: {
                   user: true
                 }
@@ -363,14 +353,18 @@ export const postRouter = createTRPCRouter({
         }
       });
 
-      return recentRooms.map(member => ({
-        roomId: member.room.id,
-        roomName: member.room.name,
-        lastMessage: member.room.messages[0]?.content,
-        lastMessageTime: member.room.messages[0]?.createdAt || member.lastSeen,
-        participantCount: member.room._count.roomMembers,
-        unreadCount: 0 // TODO: Implement proper unread count logic
-      }));
+      return recentRooms.map(member => {
+        const lastSeen = member.lastSeen;
+        const unreadCount = member.room.messages.filter(m => m.createdAt > lastSeen).length;
+        return {
+          roomId: member.room.id,
+          roomName: member.room.name,
+          lastMessage: member.room.messages[0]?.content,
+          lastMessageTime: member.room.messages[0]?.createdAt || member.lastSeen,
+          participantCount: member.room._count.roomMembers,
+          unreadCount
+        };
+      });
     }),
 
   saveMessage: publicProcedure
@@ -599,5 +593,33 @@ export const postRouter = createTRPCRouter({
         totalBadges: badges.length,
         earnedCount: badges.filter(b => b.isEarned).length
       };
+    }),
+
+  deleteUserMessagesInRoom: publicProcedure
+    .input(z.object({ userId: z.string(), roomId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.message.deleteMany({
+        where: {
+          userId: input.userId,
+          roomId: input.roomId,
+        },
+      });
+      return { success: true };
+    }),
+
+  removeRoomFromRecent: publicProcedure
+    .input(z.object({ userId: z.string(), roomId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      // Set isActive to false for this RoomMember entry
+      await ctx.db.roomMember.updateMany({
+        where: {
+          userId: input.userId,
+          roomId: input.roomId,
+        },
+        data: {
+          isActive: false,
+        },
+      });
+      return { success: true };
     }),
 });

@@ -13,16 +13,31 @@ interface BadgeTagsProps {
 export function BadgeTags({ badges, maxDisplay = 3, size = 'md', progress = {} }: BadgeTagsProps) {
   const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
   const badgeDescriptions: Record<string, string> = {
-    member: 'Join a chat to earn this badge.',
-    regular: 'Be active for 7+ days.',
-    veteran: 'Be active for 30+ days.',
-    active: 'Send 100+ messages.',
-    chatty: 'Send 500+ messages.',
-    superstar: 'Send 1000+ messages.',
-    trusted: 'Reach 50 trust score.',
-    reliable: 'Reach 80 trust score.',
-    exemplary: 'Reach 95 trust score.',
-    // Add more as needed
+    member: 'Welcome to Join.Chat! Start your journey here.',
+    regular: 'Been part of the community for a week (7 days).',
+    veteran: 'A full month of being part of our community (30 days).',
+    active: 'Sent 100+ messages in chat rooms.',
+    chatty: 'Sent 500+ messages in chat rooms.',
+    superstar: 'Sent 1000+ messages in chat rooms.',
+    trusted: 'Gained the trust of the community (trust score 50+).',
+    reliable: 'Your contributions are highly valued (trust score 80+).',
+    exemplary: 'A pillar of trust and reliability (trust score 95+).',
+    newcomer: 'Welcome to Join.Chat! Start your journey here.',
+    'week-veteran': 'Been part of the community for a week (7 days).',
+    'month-veteran': 'A full month of being part of our community (30 days).',
+    'year-veteran': 'A whole year of conversations and connections (365 days).',
+    'trusted-member': 'Gained the trust of the community (trust score 50+).',
+    'highly-trusted': 'Your contributions are highly valued (trust score 80+).',
+    guardian: 'A pillar of trust and reliability (trust score 95+).',
+    'first-message': 'Sent your first message in a chat room.',
+    chatterbox: 'Love to chat! Sent 100 messages.',
+    'conversation-master': 'A true conversation enthusiast (500 messages).',
+    'room-explorer': 'Joined 10 different chat rooms.',
+    'room-creator': 'Created your first chat room.',
+    'community-builder': 'Created 5 chat rooms for others to enjoy.',
+    'early-adopter': 'One of the first to join Join.Chat (beta).',
+    'night-owl': 'Active during late night hours (12AM-6AM).',
+    'daily-visitor': 'Visited Join.Chat for 7 consecutive days.',
   };
   const badgeProgress: Record<string, string> = progress || {};
 
