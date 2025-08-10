@@ -1,4 +1,4 @@
-# Join.Chat
+# Ever.Chat
 
 A community-owned, AI-moderated messaging platform combining the best of Discord and Reddit—focused, topic-based conversations in small, 30-person chat rooms.
 

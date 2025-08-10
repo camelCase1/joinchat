@@ -1,4 +1,4 @@
-# Join.Chat Testing Guide
+# Ever.Chat Testing Guide
 
 ## Quick Start Testing
 

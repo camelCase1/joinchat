@@ -13,7 +13,7 @@ interface BadgeTagsProps {
 export function BadgeTags({ badges, maxDisplay = 3, size = 'md', progress = {} }: BadgeTagsProps) {
   const [hoveredBadge, setHoveredBadge] = useState<string | null>(null);
   const badgeDescriptions: Record<string, string> = {
-    member: 'Welcome to Join.Chat! Start your journey here.',
+    member: 'Welcome to Ever.Chat! Start your journey here.',
     regular: 'Been part of the community for a week (7 days).',
     veteran: 'A full month of being part of our community (30 days).',
     active: 'Sent 100+ messages in chat rooms.',
@@ -22,7 +22,7 @@ export function BadgeTags({ badges, maxDisplay = 3, size = 'md', progress = {} }
     trusted: 'Gained the trust of the community (trust score 50+).',
     reliable: 'Your contributions are highly valued (trust score 80+).',
     exemplary: 'A pillar of trust and reliability (trust score 95+).',
-    newcomer: 'Welcome to Join.Chat! Start your journey here.',
+    newcomer: 'Welcome to Ever.Chat! Start your journey here.',
     'week-veteran': 'Been part of the community for a week (7 days).',
     'month-veteran': 'A full month of being part of our community (30 days).',
     'year-veteran': 'A whole year of conversations and connections (365 days).',
@@ -35,9 +35,9 @@ export function BadgeTags({ badges, maxDisplay = 3, size = 'md', progress = {} }
     'room-explorer': 'Joined 10 different chat rooms.',
     'room-creator': 'Created your first chat room.',
     'community-builder': 'Created 5 chat rooms for others to enjoy.',
-    'early-adopter': 'One of the first to join Join.Chat (beta).',
+    'early-adopter': 'One of the first to join Ever.Chat (beta).',
     'night-owl': 'Active during late night hours (12AM-6AM).',
-    'daily-visitor': 'Visited Join.Chat for 7 consecutive days.',
+    'daily-visitor': 'Visited Ever.Chat for 7 consecutive days.',
   };
   const badgeProgress: Record<string, string> = progress || {};
 

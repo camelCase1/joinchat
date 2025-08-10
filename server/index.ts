@@ -127,7 +127,8 @@ async function initializeRooms() {
   try {
     const dbRooms = await db.chatRoom.findMany();
     dbRooms.forEach(room => {
-      chatRooms.set(room.id, {
+      // Store rooms by name for Socket.io room lookup
+      chatRooms.set(room.name, {
         id: room.id,
         name: room.name,
         participants: [],
@@ -174,9 +175,22 @@ io.on('connection', (socket) => {
   // Send connection confirmation
   socket.emit('connected', { message: 'Connected to server successfully' });
 
-  socket.on('join-room', async (data: { roomId: string; user: Omit<User, 'trustScore' | 'profileAge' | 'messageCount'> }) => {
-    const { roomId, user: userData } = data;
-    const room = chatRooms.get(roomId);
+  socket.on('join-room', async (data: any) => {
+    // Support both roomName and roomId
+    const roomName = data.roomName || data.roomId;
+    const userId = data.userId;
+    const userName = data.userName;
+    
+    // Create user data
+    const userData = {
+      id: userId,
+      name: userName,
+      avatar: undefined,
+      badges: [],
+      joinedAt: new Date()
+    };
+    
+    const room = chatRooms.get(roomName);
 
     if (!room) {
       socket.emit('error', { message: 'Room not found' });
@@ -207,8 +221,8 @@ io.on('connection', (socket) => {
         profileAge: new Date(),
         messageCount: 0,
       };
-      user.badges = calculateUserBadges(user);
-      userProfiles.set(userData.id, user);
+      user.badges = calculateUserBadges(user!);
+      userProfiles.set(userData.id, user!);
     } else {
       // Update user name if changed
       user.name = userData.name;
@@ -217,47 +231,97 @@ io.on('connection', (socket) => {
     }
 
     // Remove user from previous rooms
-    chatRooms.forEach((r, id) => {
-      r.participants = r.participants.filter(p => p.id !== user!.id);
-    });
+    if (user) {
+      chatRooms.forEach((r) => {
+        r.participants = r.participants.filter(p => p.id !== user!.id);
+      });
 
-    // Add user to new room
-    room.participants.push(user);
-    userSockets.set(user.id, socket.id);
-    userActivity.set(user.id, new Date());
+      // Add user to new room
+      room.participants.push(user);
+      userSockets.set(user.id, socket.id);
+      userActivity.set(user.id, new Date());
+    }
 
     // Update room member in database
     try {
-      await db.roomMember.upsert({
-        where: {
-          userId_roomId: {
-            userId: user.id,
-            roomId: roomId
-          }
-        },
-        update: {
-          isActive: true,
-          lastSeen: new Date()
-        },
-        create: {
-          userId: user.id,
-          roomId: roomId,
-          isActive: true
-        }
+      // First find the room in database
+      const dbRoom = await db.chatRoom.findFirst({
+        where: { name: roomName }
       });
+      
+      if (dbRoom) {
+        // Find or create user in database
+        let dbUser = user ? await db.user.findFirst({
+          where: { displayName: user.name }
+        }) : null;
+        
+        if (!dbUser && user) {
+          dbUser = await db.user.create({
+            data: {
+              email: `${user.id}@temp.com`,
+              displayName: user.name,
+              password: null,
+            }
+          });
+        }
+        
+        if (dbUser) {
+          await db.roomMember.upsert({
+            where: {
+              userId_roomId: {
+                userId: dbUser.id,
+                roomId: dbRoom.id
+              }
+            },
+            update: {
+              isActive: true,
+              lastSeen: new Date()
+            },
+            create: {
+              userId: dbUser.id,
+              roomId: dbRoom.id,
+              isActive: true
+            }
+          });
+        }
+      }
     } catch (error) {
       console.error('❌ Error updating room member in database:', error);
     }
 
-    socket.join(roomId);
-    socket.emit('joined-room', { room, user });
-    socket.to(roomId).emit('user-joined', { user, participantCount: room.participants.length });
-    emitSidebarPresence(roomId);
+    socket.join(roomName);
+    if (user) {
+      socket.emit('room-joined', { 
+        room: roomName,
+        participants: room.participants,
+        messages: []
+      });
+      socket.to(roomName).emit('user-joined', { 
+        userId: user.id,
+        userName: user.name,
+        participants: room.participants 
+      });
+      emitSidebarPresence(roomName);
+    }
 
     // Load recent messages from database
     try {
+      // First find the room in database
+      const dbRoom = await db.chatRoom.findFirst({
+        where: { name: roomName }
+      });
+      
+      if (!dbRoom) {
+        socket.emit('room-joined', { 
+          room: roomName,
+          participants: room.participants,
+          messages: []
+        });
+        return;
+      }
+      
       const recentMessages = await db.message.findMany({
-        where: { roomId },
+        where: { roomId: dbRoom.id },
         orderBy: { createdAt: 'desc' },
         take: 50,
         include: {
@@ -278,19 +342,35 @@ io.on('connection', (socket) => {
         type: msg.type.toLowerCase() as 'text' | 'image' | 'video'
       }));
 
-      socket.emit('recent-messages', { messages: formattedMessages });
+      // Send room-joined event with messages
+      socket.emit('room-joined', { 
+        room: roomName,
+        participants: room.participants,
+        messages: formattedMessages
+      });
     } catch (error) {
       console.error('❌ Error loading messages from database:', error);
-      socket.emit('recent-messages', { messages: room.messages.slice(-50) });
+      // Send room-joined event without messages on error
+      socket.emit('room-joined', { 
+        room: roomName,
+        participants: room.participants,
+        messages: []
+      });
     }
   });
 
-  socket.on('send-message', async (data: { roomId: string; message: Omit<Message, 'id' | 'timestamp'> }) => {
-    console.log('SERVER: send-message called', data.message.content, data.message.userId);
-    const { roomId, message } = data;
-    const room = chatRooms.get(roomId);
-
-    if (!room) return;
+  socket.on('send-message', async (data: any) => {
+    // Support both formats for backwards compatibility
+    const roomName = data.roomName || data.roomId;
+    const message = data.message || data;
+    
+    console.log('SERVER: send-message called', { roomName, message });
+    
+    const room = chatRooms.get(roomName);
+    if (!room) {
+      console.error('Room not found:', roomName);
+      return;
+    }
 
     // Update user activity and profile
     userActivity.set(message.userId, new Date());
@@ -311,15 +391,37 @@ io.on('connection', (socket) => {
 
     // Save message to database
     try {
-      await db.message.create({
-        data: {
-          id: newMessage.id,
-          content: newMessage.content,
-          type: newMessage.type.toUpperCase() as any,
-          userId: newMessage.userId,
-          roomId: roomId,
-        }
+      // First, find the room in database by name
+      const dbRoom = await db.chatRoom.findFirst({
+        where: { name: roomName }
       });
+      
+      if (dbRoom) {
+        // Then find or create the user
+        let dbUser = await db.user.findFirst({
+          where: { displayName: message.userName }
+        });
+        
+        if (!dbUser) {
+          // Create a new user if doesn't exist
+          dbUser = await db.user.create({
+            data: {
+              email: `${message.userId}@temp.com`,
+              displayName: message.userName,
+              password: null,
+            }
+          });
+        }
+        
+        await db.message.create({
+          data: {
+            content: newMessage.content,
+            type: newMessage.type.toUpperCase() as any,
+            userId: dbUser.id,
+            roomId: dbRoom.id,
+          }
+        });
+      }
     } catch (error) {
       console.error('❌ Error saving message to database:', error);
     }
@@ -331,32 +433,47 @@ io.on('connection', (socket) => {
       room.messages = room.messages.slice(-1000);
     }
 
-    io.to(roomId).emit('new-message', newMessage);
+    io.to(roomName).emit('new-message', newMessage);
 
     // After saving message, emit sidebar-unread to all room members except sender
-    const userIds = await getActiveUserIdsInRoom(roomId);
+    const userIds = await getActiveUserIdsInRoom(roomName);
     for (const uid of userIds) {
       if (uid !== message.userId) {
         // Get unread count for this user in this room
-        const member = await db.roomMember.findFirst({ where: { userId: uid, roomId } });
-        const unreadCount = await db.message.count({ where: { roomId, createdAt: { gt: member?.lastSeen || new Date(0) }, userId: { not: uid } } });
-        io.to(uid).emit('sidebar-unread', { roomId, userId: uid, unreadCount });
+        const member = await db.roomMember.findFirst({ where: { userId: uid, roomId: roomName } });
+        const unreadCount = await db.message.count({ where: { roomId: roomName, createdAt: { gt: member?.lastSeen || new Date(0) }, userId: { not: uid } } });
+        io.to(uid).emit('sidebar-unread', { roomId: roomName, userId: uid, unreadCount });
       }
     }
   });
 
-  socket.on('leave-room', (data: { roomId: string; userId: string }) => {
-    const { roomId, userId } = data;
-    const room = chatRooms.get(roomId);
+  socket.on('leave-room', (roomName: string) => {
+    // Support both object format and string format
+    const roomToLeave = typeof roomName === 'string' ? roomName : (roomName as any).roomId || (roomName as any).roomName;
+    const room = chatRooms.get(roomToLeave);
 
     if (room) {
-      room.participants = room.participants.filter(p => p.id !== userId);
-      socket.leave(roomId);
-      socket.to(roomId).emit('user-left', { userId, participantCount: room.participants.length });
-      emitSidebarPresence(roomId);
+      // Find user associated with this socket
+      let userId: string | undefined;
+      for (const [uid, sid] of userSockets.entries()) {
+        if (sid === socket.id) {
+          userId = uid;
+          break;
+        }
+      }
+      
+      if (userId) {
+        room.participants = room.participants.filter(p => p.id !== userId);
+        userSockets.delete(userId);
+      }
+      
+      socket.leave(roomToLeave);
+      socket.to(roomToLeave).emit('user-left', { 
+        userId, 
+        participantCount: room.participants.length 
+      });
+      emitSidebarPresence(roomToLeave);
     }
-
-    userSockets.delete(userId);
   });
 
   // Refresh rooms cache when new rooms are created via tRPC
@@ -364,10 +481,10 @@ io.on('connection', (socket) => {
     try {
       const dbRooms = await db.chatRoom.findMany();
 
-      // Add any new rooms to memory cache
+      // Add any new rooms to memory cache (store by name)
       dbRooms.forEach(room => {
-        if (!chatRooms.has(room.id)) {
-          chatRooms.set(room.id, {
+        if (!chatRooms.has(room.name)) {
+          chatRooms.set(room.name, {
             id: room.id,
             name: room.name,
             participants: [],
@@ -460,14 +577,14 @@ io.on('connection', (socket) => {
 
     // Remove user from all typing sets
     let disconnectedUserId;
-    for (const [id, name] of userIdToName.entries()) {
+    for (const [id] of userIdToName.entries()) {
       if (userSockets.get(id) === socket.id) {
         disconnectedUserId = id;
         break;
       }
     }
     if (disconnectedUserId) {
-      for (const [roomId, set] of roomTypingUsers.entries()) {
+      for (const [, set] of roomTypingUsers.entries()) {
         set.delete(disconnectedUserId);
       }
     }
@@ -478,4 +595,36 @@ const PORT = process.env.PORT || 3001;
 
 server.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+});
+
+// Graceful shutdown handlers
+const gracefulShutdown = () => {
+  console.log('Shutting down gracefully...');
+  
+  // Close all socket connections
+  io.close(() => {
+    console.log('Socket.io connections closed');
+  });
+  
+  // Close HTTP server
+  server.close(() => {
+    console.log('HTTP server closed');
+    process.exit(0);
+  });
+  
+  // Force exit after 5 seconds if graceful shutdown fails
+  setTimeout(() => {
+    console.error('Could not close connections in time, forcefully shutting down');
+    process.exit(1);
+  }, 5000);
+};
+
+// Handle termination signals
+process.on('SIGTERM', gracefulShutdown);
+process.on('SIGINT', gracefulShutdown);
+
+// Handle tsx hot reload signal
+process.on('SIGUSR2', () => {
+  console.log('Received SIGUSR2, reloading...');
+  gracefulShutdown();
 });

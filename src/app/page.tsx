@@ -1,53 +1,54 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
-import { useAuth } from '~/contexts/AuthContext';
-import { RoomList } from '~/components/chat/RoomList';
-import { ChatRoom } from '~/components/chat/ChatRoom';
-import { RecentChatsSidebar } from '~/components/chat/RecentChatsSidebar';
-import { ConnectionStatus } from '~/components/debug/ConnectionStatus';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { useAuth } from '~/contexts/AuthContext';
+import { ChannelSidebar } from '~/components/chat/ChannelSidebar';
+import { ModernChatRoom } from '~/components/chat/ModernChatRoom';
+import { Button } from '~/components/ui/button';
+import { Sparkles } from 'lucide-react';
+import { api } from '~/trpc/react';
 
-export default function Home() {
+export default function HomePage() {
   const { user, loading } = useAuth();
-  const [currentRoomId, setCurrentRoomId] = useState<string | null>(null);
   const router = useRouter();
+  const [currentChannelId, setCurrentChannelId] = useState<string>('');
+  const [currentChannelName, setCurrentChannelName] = useState<string>('');
+  const [currentDMUserId, setCurrentDMUserId] = useState<string | null>(null);
+  
+  // Load rooms from database
+  const { data: rooms } = api.post.getRooms.useQuery();
 
   useEffect(() => {
-    if (!loading) {
-      if (!user) {
-        router.push('/auth');
-      }
+    if (!loading && !user) {
+      router.push('/auth');
     }
   }, [user, loading, router]);
-
-  // Add to recent chats when joining a room
-  const handleJoinRoom = useCallback((roomId: string) => {
-    setCurrentRoomId(roomId);
-    // Add to recent chats in localStorage
-    if (typeof window !== 'undefined') {
-      const existingChats = JSON.parse(localStorage.getItem('recentChats') || '[]');
-      const chatIndex = existingChats.findIndex((chat: { roomId: string }) => chat.roomId === roomId);
-      const chatData = {
-        roomId,
-        roomName: '', // Room name will be updated by sidebar fetch
-        lastMessageTime: new Date().toISOString(),
-        lastMessage: ''
-      };
-      if (chatIndex >= 0) {
-        existingChats[chatIndex] = { ...existingChats[chatIndex], ...chatData };
-      } else {
-        existingChats.unshift(chatData);
+  
+  // Set default channel to general when rooms load
+  useEffect(() => {
+    if (rooms && rooms.length > 0 && !currentChannelId) {
+      const generalRoom = rooms.find(r => r.name === 'general');
+      if (generalRoom) {
+        setCurrentChannelId(generalRoom.id);
+        setCurrentChannelName(generalRoom.name);
+      } else if (rooms[0]) {
+        // Fallback to first room if no general room
+        setCurrentChannelId(rooms[0].id);
+        setCurrentChannelName(rooms[0].name);
       }
-      const recentChats = existingChats.slice(0, 10);
-      localStorage.setItem('recentChats', JSON.stringify(recentChats));
     }
-  }, []);
+  }, [rooms, currentChannelId]);
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="flex flex-col items-center space-y-4">
+          <div className="p-3 gradient-bg rounded-2xl animate-pulse-soft">
+            <Sparkles className="h-8 w-8 text-white" />
+          </div>
+          <p className="text-muted-foreground">Loading ever.chat...</p>
+        </div>
       </div>
     );
   }
@@ -56,29 +57,62 @@ export default function Home() {
     return null;
   }
 
+  const handleSelectChannel = (channelId: string) => {
+    setCurrentChannelId(channelId);
+    setCurrentDMUserId(null);
+    
+    // Find the channel name from rooms data
+    if (rooms) {
+      const selectedRoom = rooms.find(r => r.id === channelId);
+      if (selectedRoom) {
+        setCurrentChannelName(selectedRoom.name);
+      }
+    }
+  };
+
+  const handleSelectDM = (userId: string) => {
+    setCurrentDMUserId(userId);
+    setCurrentChannelId('');
+  };
+
   return (
-    <div className="flex h-screen overflow-hidden">
-      {/* Sidebar - always visible */}
-      <div className="flex-shrink-0 h-screen overflow-y-auto">
-        <RecentChatsSidebar 
-          currentRoomId={currentRoomId}
-          onJoinRoom={handleJoinRoom}
-          onReturnToLobby={() => setCurrentRoomId(null)}
+    <div className="flex h-screen bg-background">
+      <ChannelSidebar
+        currentChannelId={currentChannelId}
+        onSelectChannel={handleSelectChannel}
+        onSelectDM={handleSelectDM}
+      />
+      
+      {currentChannelId && (
+        <ModernChatRoom
+          channelId={currentChannelId}
+          channelName={currentChannelName}
         />
-      </div>
-      {/* Main content */}
-      <div className="flex-1 min-w-0 h-screen overflow-y-auto">
-        {currentRoomId ? (
-          <ChatRoom 
-            key={currentRoomId}
-            roomId={currentRoomId} 
-            onLeaveRoom={() => setCurrentRoomId(null)} 
-          />
-        ) : (
-          <RoomList onJoinRoom={handleJoinRoom} />
-        )}
-      </div>
-      <ConnectionStatus />
+      )}
+      
+      {currentDMUserId && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="p-4 gradient-bg rounded-2xl inline-block">
+              <Sparkles className="h-12 w-12 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Direct Messages</h2>
+            <p className="text-muted-foreground">DM functionality coming soon!</p>
+          </div>
+        </div>
+      )}
+      
+      {!currentChannelId && !currentDMUserId && (
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center space-y-4">
+            <div className="p-4 gradient-bg rounded-2xl inline-block">
+              <Sparkles className="h-12 w-12 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold">Welcome to ever.chat</h2>
+            <p className="text-muted-foreground">Select a channel to start chatting</p>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

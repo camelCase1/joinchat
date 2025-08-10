@@ -23,7 +23,22 @@
       "Bash(npx tsx:*)",
       "Bash(grep:*)",
       "Bash(node:*)",
-      "Bash(npm start)"
+      "Bash(npm start)",
+      "mcp__ide__executeCode",
+      "Bash(claude mcp add:*)",
+      "Bash(npm ls:*)",
+      "mcp__playwright__browser_navigate",
+      "mcp__playwright__browser_snapshot",
+      "mcp__playwright__browser_click",
+      "mcp__playwright__browser_type",
+      "mcp__playwright__browser_press_key",
+      "Bash(curl:*)",
+      "Bash(npx playwright:*)",
+      "Bash(true)",
+      "WebFetch(domain:localhost)",
+      "Bash(timeout:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)"
     ],
     "deny": []
   }

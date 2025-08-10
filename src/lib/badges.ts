@@ -33,7 +33,7 @@ export const ALL_BADGES: Omit<Badge, 'isEarned' | 'earnedAt' | 'progress'>[] = [
   {
     id: 'newcomer',
     name: 'Newcomer',
-    description: 'Welcome to Join.Chat! Start your journey here.',
+    description: 'Welcome to Ever.Chat! Start your journey here.',
     icon: '🌱',
     color: 'bg-green-100 text-green-800',
     category: 'profile',
@@ -156,7 +156,7 @@ export const ALL_BADGES: Omit<Badge, 'isEarned' | 'earnedAt' | 'progress'>[] = [
   {
     id: 'early-adopter',
     name: 'Early Adopter',
-    description: 'One of the first to join Join.Chat.',
+    description: 'One of the first to join Ever.Chat.',
     icon: '🚀',
     color: 'bg-gradient-to-r from-purple-400 to-pink-400 text-white',
     category: 'special',
@@ -174,7 +174,7 @@ export const ALL_BADGES: Omit<Badge, 'isEarned' | 'earnedAt' | 'progress'>[] = [
   {
     id: 'daily-visitor',
     name: 'Daily Visitor',
-    description: 'Visited Join.Chat for 7 consecutive days.',
+    description: 'Visited Ever.Chat for 7 consecutive days.',
     icon: '📆',
     color: 'bg-lime-100 text-lime-800',
     category: 'special',

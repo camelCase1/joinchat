@@ -3,91 +3,240 @@
 @tailwind utilities;
 
 @layer base {
-  * {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
+  :root {
+    --background: 0 0% 100%;
+    --foreground: 240 10% 3.9%;
+    --card: 0 0% 100%;
+    --card-foreground: 240 10% 3.9%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 240 10% 3.9%;
+    --primary: 262 83% 58%; /* Purple */
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 4.8% 95.9%;
+    --secondary-foreground: 240 5.9% 10%;
+    --muted: 240 4.8% 95.9%;
+    --muted-foreground: 240 3.8% 46.1%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5.9% 90%;
+    --input: 240 5.9% 90%;
+    --ring: 262 83% 58%;
+    --radius: 0.75rem;
+
+    /* Ever.chat custom colors */
+    --gradient-start: 262 83% 58%;
+    --gradient-end: 273 100% 69%;
+    --success: 142 71% 45%;
+    --warning: 38 92% 50%;
+    --info: 217 91% 60%;
   }
-  
-  html {
-    height: 100%;
-    overflow-y: auto;
-  }
-  
-  body {
-    height: 100%;
-    min-height: 100vh;
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
-    background-color: #ffffff;
-    color: #212529;
-    line-height: 1.6;
-    overflow-y: auto;
-  }
-  
-  #__next {
-    height: 100%;
-    min-height: 100vh;
-    overflow-y: auto;
-  }
-  .modal {
-    max-height: 90vh;
-    overflow-y: auto;
+
+  .dark {
+    --background: 240 10% 3.9%;
+    --foreground: 0 0% 98%;
+    --card: 240 10% 8%;
+    --card-foreground: 0 0% 98%;
+    --popover: 240 10% 8%;
+    --popover-foreground: 0 0% 98%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 240 3.7% 15.9%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 3.7% 15.9%;
+    --muted-foreground: 240 5% 64.9%;
+    --accent: 262 83% 58%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 62.8% 30.6%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 3.7% 15.9%;
+    --input: 240 3.7% 15.9%;
+    --ring: 262 83% 58%;
   }
 }
 
-@layer components {
-  .btn {
-    @apply px-4 py-2 rounded-lg font-medium transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-offset-2;
+@layer base {
+  * {
+    @apply border-border;
   }
-  
-  .btn-primary {
-    @apply bg-red-500 text-white hover:bg-red-600 focus:ring-red-500 rounded-lg;
-  }
-  
-  .btn-secondary {
-    @apply bg-gray-100 text-gray-700 hover:bg-gray-200 focus:ring-gray-500;
-  }
-  
-  .input {
-    @apply w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-200;
-  }
-  
-  .card {
-    @apply bg-white rounded-lg shadow-sm border border-gray-200 hover:shadow-md transition-shadow duration-200;
-  }
-  
-  .room-card {
-    @apply bg-white rounded-lg shadow-sm hover:shadow-md transition-all duration-200 border border-gray-200 overflow-hidden;
-  }
-  
-  .chat-message {
-    @apply flex items-start space-x-3 p-3 hover:bg-gray-50 rounded-lg transition-colors duration-150;
-  }
-  
-  .avatar {
-    @apply w-10 h-10 rounded-full flex items-center justify-center text-white font-semibold text-sm;
-  }
-  
-  .gradient-bg {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  }
-  
-  .auth-container {
-    background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+  body {
+    @apply bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   }
 }
 
 @layer utilities {
-  .text-shadow {
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+  .text-balance {
+    text-wrap: balance;
   }
-  
-  .scroll-smooth {
-    scroll-behavior: smooth;
+
+  .gradient-text {
+    @apply bg-gradient-to-r from-purple-500 to-violet-600 bg-clip-text text-transparent;
   }
-  
-  .backdrop-blur-glass {
-    backdrop-filter: blur(10px);
-    background-color: rgba(255, 255, 255, 0.8);
+
+  .gradient-bg {
+    @apply bg-gradient-to-br from-purple-500 to-violet-600;
   }
+
+  .glass {
+    @apply bg-white/10 backdrop-blur-md border border-white/20;
+  }
+
+  .glass-dark {
+    @apply bg-black/10 backdrop-blur-md border border-black/20;
+  }
+}
+
+/* Custom animations */
+@keyframes slide-up {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes pulse-soft {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.8;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Message reactions */
+.reaction-pill {
+  @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs;
+  @apply bg-secondary hover:bg-secondary/80 transition-colors cursor-pointer;
+}
+
+.reaction-pill.reacted {
+  @apply bg-primary/20 text-primary border border-primary/30;
+}
+
+/* Status indicators */
+.status-online {
+  @apply w-3 h-3 bg-green-500 rounded-full;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.status-away {
+  @apply w-3 h-3 bg-yellow-500 rounded-full;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.status-busy {
+  @apply w-3 h-3 bg-red-500 rounded-full;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+.status-offline {
+  @apply w-3 h-3 bg-gray-400 rounded-full;
+  box-shadow: 0 0 0 2px var(--background);
+}
+
+/* Channel list styles */
+.channel-item {
+  @apply flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer;
+  @apply hover:bg-accent/10 transition-colors;
+}
+
+.channel-item.active {
+  @apply bg-accent/20 text-accent font-medium;
+}
+
+.channel-item.unread {
+  @apply font-semibold;
+}
+
+/* Message styles */
+.message-hover-actions {
+  @apply opacity-0 group-hover:opacity-100 transition-opacity;
+}
+
+/* Emoji picker */
+.emoji-picker-trigger {
+  @apply p-1.5 rounded-md hover:bg-secondary transition-colors cursor-pointer;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-border rounded-full;
+  background: linear-gradient(180deg, hsl(var(--primary)), hsl(var(--gradient-end)));
+}
+
+::-webkit-scrollbar-thumb:hover {
+  @apply bg-muted-foreground/30;
+}
+
+/* Input focus styles */
+input:focus, textarea:focus {
+  @apply ring-2 ring-primary/50 ring-offset-2 ring-offset-background;
+}
+
+/* Loading skeleton */
+.skeleton {
+  @apply bg-gradient-to-r from-secondary via-secondary/50 to-secondary;
+  background-size: 200% 100%;
+  animation: skeleton 1.5s ease-in-out infinite;
+}
+
+@keyframes skeleton {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* Mention highlight */
+.mention {
+  @apply px-1 py-0.5 rounded bg-primary/10 text-primary font-medium;
+}
+
+/* Code block styling */
+.code-block {
+  @apply bg-secondary/50 rounded-lg p-3 font-mono text-sm;
+}
+
+/* Thread indicator */
+.thread-line {
+  @apply absolute left-6 top-12 bottom-0 w-0.5 bg-border;
 }

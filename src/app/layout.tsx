@@ -12,7 +12,7 @@ import { initializeDatabase } from "~/lib/initializeDb";
 initializeDatabase();
 
 export const metadata: Metadata = {
-  title: "Join.Chat - Topic-based conversations",
+  title: "Ever.Chat - Topic-based conversations",
   description: "Community-owned, AI-moderated messaging platform for focused discussions",
   icons: [{ rel: "icon", url: "/favicon.ico" }],
 };

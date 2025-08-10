@@ -4,6 +4,9 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/contexts/AuthContext';
 import toast from 'react-hot-toast';
+import { Button } from '~/components/ui/button';
+import { Input } from '~/components/ui/input';
+import { Label } from '~/components/ui/label';
 
 interface SignupFormProps {
   onToggleMode: () => void;
@@ -20,7 +23,7 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    
+
     if (!email || !password || !confirmPassword || !displayName) {
       toast.error('Please fill in all fields');
       return;
@@ -42,6 +45,7 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
       toast.success('Account created successfully!');
       router.push('/');
     } catch (error: unknown) {
+      console.error('Signup error:', error);
       const errorMessage = error instanceof Error ? error.message : 'Failed to create account';
       toast.error(errorMessage);
     } finally {
@@ -50,97 +54,89 @@ export function SignupForm({ onToggleMode }: SignupFormProps) {
   }
 
   return (
-    <div className="w-full max-w-md mx-auto">
-      <div className="card backdrop-blur-glass p-8">
-        <div className="text-center mb-6">
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">Join the Conversation</h2>
-          <p className="text-gray-600">Create your account to get started</p>
+    <div className="w-full max-w-sm">
+      <div className="space-y-6">
+        <div className="space-y-2 text-center">
+          <h1 className="text-2xl font-semibold tracking-tight">Create an account</h1>
+          <p className="text-sm text-muted-foreground">Enter your details to get started</p>
         </div>
-        
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Display Name
-            </label>
-            <input
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div className="space-y-2">
+            <Label htmlFor="displayName">Display name</Label>
+            <Input
+              id="displayName"
               type="text"
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              className="input h-12 text-base"
-              placeholder="Choose a display name"
+              placeholder="John Doe"
               required
+              className="h-10"
             />
           </div>
-          
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Email Address
-            </label>
-            <input
+
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="input h-12 text-base"
-              placeholder="Enter your email"
+              placeholder="name@example.com"
               required
+              className="h-10"
             />
           </div>
-          
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Password
-            </label>
-            <input
+
+          <div className="space-y-2">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="input h-12 text-base"
               placeholder="Create a password"
               required
+              className="h-10"
             />
           </div>
-          
-          <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">
-              Confirm Password
-            </label>
-            <input
+
+          <div className="space-y-2">
+            <Label htmlFor="confirmPassword">Confirm password</Label>
+            <Input
+              id="confirmPassword"
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              className="input h-12 text-base"
               placeholder="Confirm your password"
               required
+              className="h-10"
             />
           </div>
-          
-          <button
-            type="submit"
-            disabled={loading}
-            className="btn btn-primary w-full h-12 text-lg font-semibold shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {loading ? (
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-white mr-2"></div>
-                Creating Account...
-              </div>
-            ) : (
-              'Create Account'
-            )}
-          </button>
+
+          <Button type="submit" disabled={loading} className="w-full h-10">
+            {loading ? 'Creating account...' : 'Sign up'}
+          </Button>
         </form>
-        
-        <div className="mt-8 pt-6 border-t border-gray-200">
-          <p className="text-center text-sm text-gray-600">
-            Already have an account?{' '}
-            <button
-              type="button"
-              onClick={onToggleMode}
-              className="text-blue-600 hover:text-blue-700 font-semibold hover:underline transition-colors"
-            >
-              Sign in here
-            </button>
-          </p>
+
+        <div className="relative">
+          <div className="absolute inset-0 flex items-center">
+            <span className="w-full border-t" />
+          </div>
+          <div className="relative flex justify-center text-xs uppercase">
+            <span className="bg-background px-2 text-muted-foreground">Or</span>
+          </div>
+        </div>
+
+        <div className="text-center text-sm">
+          <span className="text-muted-foreground">Already have an account? </span>
+          <button
+            type="button"
+            onClick={onToggleMode}
+            className="font-medium underline underline-offset-4 hover:text-primary transition-colors"
+          >
+            Sign in
+          </button>
         </div>
       </div>
     </div>

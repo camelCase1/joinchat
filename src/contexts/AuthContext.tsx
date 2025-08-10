@@ -15,7 +15,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   loading: boolean;
-  guestLogin: () => Promise<void>;
+  guestLogin: (username: string) => Promise<void>;
   isGuest?: boolean;
 }
 
@@ -41,8 +41,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const userId = localStorage.getItem(STORAGE_KEY);
     const guestFlag = localStorage.getItem('joinchat_guest');
-    setStoredUserId(userId);
-    setIsGuest(guestFlag === '1');
+    const guestUsername = localStorage.getItem('joinchat_guest_username');
+    
+    if (guestFlag === '1' && guestUsername) {
+      // Restore guest user
+      const guestId = 'guest-' + Math.random().toString(36).substring(2, 10);
+      setUser({ 
+        uid: guestId, 
+        email: '', 
+        displayName: guestUsername 
+      });
+      setIsGuest(true);
+      setLoading(false);
+    } else {
+      setStoredUserId(userId);
+      setIsGuest(false);
+    }
   }, []);
 
   // Use tRPC query to get current user if we have a stored ID
@@ -82,32 +96,43 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   async function signup(email: string, password: string, displayName: string) {
     try {
+      console.log('Attempting signup for:', email);
       const result = await signupMutation.mutateAsync({ email, password, displayName });
+      console.log('Signup successful:', result);
       setUser(result.user);
       setStoredUserId(result.user.uid);
       localStorage.setItem(STORAGE_KEY, result.user.uid);
     } catch (error: unknown) {
+      console.error('Signup mutation error:', error);
       throw error;
     }
   }
 
   async function login(email: string, password: string) {
     try {
+      console.log('Attempting login for:', email);
       const result = await loginMutation.mutateAsync({ email, password });
+      console.log('Login successful:', result);
       setUser(result.user);
       setStoredUserId(result.user.uid);
       localStorage.setItem(STORAGE_KEY, result.user.uid);
     } catch (error: unknown) {
+      console.error('Login mutation error:', error);
       throw error;
     }
   }
 
-  async function guestLogin() {
+  async function guestLogin(username: string) {
     const guestId = 'guest-' + Math.random().toString(36).substring(2, 10);
-    const guestUser = { uid: guestId, email: '', displayName: 'Guest' };
+    const guestUser = { 
+      uid: guestId, 
+      email: '', 
+      displayName: username || 'Guest'
+    };
     setUser(guestUser);
     setIsGuest(true);
     localStorage.setItem('joinchat_guest', '1');
+    localStorage.setItem('joinchat_guest_username', username);
     localStorage.removeItem(STORAGE_KEY);
   }
 
@@ -118,6 +143,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsGuest(false);
       localStorage.removeItem(STORAGE_KEY);
       localStorage.removeItem('joinchat_guest');
+      localStorage.removeItem('joinchat_guest_username');
     } catch (error: unknown) {
       throw error;
     }

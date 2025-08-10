@@ -1,7 +1,7 @@
 #!/bin/bash
 
 # Start both Next.js dev server and Socket.io server
-echo "🚀 Starting Join.Chat application..."
+echo "🚀 Starting Ever.Chat application..."
 echo "📦 This will start both the Next.js frontend and Socket.io server"
 echo ""
 
