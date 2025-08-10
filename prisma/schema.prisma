@@ -8,42 +8,44 @@ datasource db {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
-  displayName  String
-  avatar       String?
-  profileAge   DateTime     @default(now())
-  trustScore   Int          @default(0)
-  badges       String       @default("[]")
-  isOnline     Boolean      @default(false)
-  lastSeen     DateTime     @default(now())
-  createdAt    DateTime     @default(now())
-  updatedAt    DateTime     @updatedAt
-  password     String?
-  daysLoggedIn Int          @default(0)
-  messages     Message[]
-  mutedByUsers MutedUser[]  @relation("MutedUser")
-  mutedUsers   MutedUser[]  @relation("UserMutes")
-  roomMembers  RoomMember[]
+  id              String            @id @default(cuid())
+  email           String            @unique
+  displayName     String
+  avatar          String?
+  profileAge      DateTime          @default(now())
+  trustScore      Int               @default(0)
+  badges          String            @default("[]")
+  isOnline        Boolean           @default(false)
+  lastSeen        DateTime          @default(now())
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  password        String?
+  daysLoggedIn    Int               @default(0)
+  messages        Message[]
+  mutedByUsers    MutedUser[]       @relation("MutedUser")
+  mutedUsers      MutedUser[]       @relation("UserMutes")
+  roomMembers     RoomMember[]
+  starredChannels StarredChannel[]
 
   @@index([email])
   @@index([trustScore])
 }
 
 model ChatRoom {
-  id               String       @id @default(cuid())
+  id               String            @id @default(cuid())
   name             String
   description      String?
   topic            String
-  isPublic         Boolean      @default(true)
-  maxParticipants  Int          @default(30)
-  participantCount Int          @default(0)
-  isActive         Boolean      @default(true)
-  featured         Boolean      @default(false)
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  isPublic         Boolean           @default(true)
+  maxParticipants  Int               @default(30)
+  participantCount Int               @default(0)
+  isActive         Boolean           @default(true)
+  featured         Boolean           @default(false)
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   messages         Message[]
   roomMembers      RoomMember[]
+  starredBy        StarredChannel[]
 
   @@index([topic])
   @@index([featured])
@@ -95,4 +97,17 @@ model MutedUser {
   @@unique([userId, mutedId, roomId])
   @@index([userId])
   @@index([mutedId])
+}
+
+model StarredChannel {
+  id        String   @id @default(cuid())
+  userId    String
+  channelId String
+  starredAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  channel   ChatRoom @relation(fields: [channelId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, channelId])
+  @@index([userId])
+  @@index([channelId])
 }

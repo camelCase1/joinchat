@@ -331,13 +331,13 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
   return (
     <div className="flex-1 flex flex-col h-screen bg-background">
       {/* Channel Header */}
-      <div className="h-12 border-b px-4 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="h-10 border-b px-3 flex items-center justify-between bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
         <div className="flex items-center space-x-3">
-          <Hash className="h-5 w-5 text-muted-foreground" />
-          <h2 className="font-semibold text-lg">{channelName}</h2>
+          <Hash className="h-4 w-4 text-muted-foreground" />
+          <h2 className="font-semibold text-base">{channelName}</h2>
           <Separator orientation="vertical" className="h-5" />
-          <Button variant="ghost" size="sm" className="h-7 px-2">
-            <Star className="h-3 w-3 mr-1" />
+          <Button variant="ghost" size="sm" className="h-6 px-1.5">
+            <Star className="h-3 w-3 mr-0.5" />
             Star
           </Button>
           <Separator orientation="vertical" className="h-5" />
@@ -358,44 +358,45 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
         </div>
         
         <div className="flex items-center space-x-2">
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
             <Phone className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
             <Video className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
             <Pin className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
             <MoreVertical className="h-4 w-4" />
           </Button>
         </div>
       </div>
 
       {/* Messages Area */}
-      <ScrollArea className="flex-1 p-4">
-        <div className="space-y-4">
+      <ScrollArea className="flex-1 p-3">
+        <div>
           {messages.map((message, index) => {
             const showAvatar = index === 0 || messages[index - 1]?.userId !== message.userId;
             const isOwnMessage = message.userId === user?.uid;
             
             return (
-              <div key={message.id} className="group relative">
-                {showAvatar && <Separator className="my-4" />}
-                <div className={cn("flex items-start space-x-3", !showAvatar && "ml-11")}>
-                  {showAvatar && (
-                    <Avatar className="h-9 w-9">
-                      <AvatarFallback className="text-xs gradient-bg text-white">
+              <div key={message.id} className={cn("group relative", showAvatar ? "mb-1.5" : "mb-0.5")}>
+                <div className="flex items-start space-x-2">
+                  {showAvatar ? (
+                    <Avatar className="h-8 w-8 mt-1">
+                      <AvatarFallback className="text-[11px] gradient-bg text-white">
                         {getInitials(message.userName)}
                       </AvatarFallback>
                     </Avatar>
+                  ) : (
+                    <div className="w-8" /> // Spacer for non-avatar messages
                   )}
                   
-                  <div className="flex-1 space-y-1">
+                  <div className="flex-1">
                     {showAvatar && (
-                      <div className="flex items-center space-x-2">
-                        <span className="font-semibold text-sm">{message.userName}</span>
+                      <div className="flex items-center space-x-2 mb-1">
+                        <span className="font-medium text-sm text-foreground">{message.userName}</span>
                         <span className="text-xs text-muted-foreground">{formatTime(message.timestamp)}</span>
                         {message.edited && (
                           <span className="text-xs text-muted-foreground">(edited)</span>
@@ -403,30 +404,34 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
                       </div>
                     )}
                     
-                    {/* Message Content */}
+                    {/* Message Bubble */}
                     {message.type === 'text' && (
-                      <p className="text-sm leading-relaxed">
-                        {message.content.split(' ').map((word, i) => {
-                          if (word.startsWith('@')) {
-                            return <span key={i} className="mention">@{word.slice(1)} </span>;
-                          }
-                          return word + ' ';
-                        })}
-                      </p>
+                      <div className="bg-gray-100 rounded-2xl px-3 py-1.5 max-w-2xl">
+                        <p className="text-sm leading-relaxed">
+                          {message.content.split(' ').map((word, i) => {
+                            if (word.startsWith('@')) {
+                              return <span key={i} className="mention">@{word.slice(1)} </span>;
+                            }
+                            return word + ' ';
+                          })}
+                        </p>
+                      </div>
                     )}
                     
                     {message.type === 'file' && message.attachments && (
-                      <div className="flex items-center space-x-3 p-3 bg-secondary/50 rounded-lg max-w-sm">
-                        <FileText className="h-8 w-8 text-muted-foreground" />
-                        <div>
-                          <p className="text-sm font-medium">{message.attachments[0]?.name || 'File'}</p>
-                          <p className="text-xs text-muted-foreground">{message.attachments[0]?.size || 'Unknown size'}</p>
+                      <div className="bg-muted/30 rounded-2xl p-3 max-w-sm">
+                        <div className="flex items-center space-x-3">
+                          <FileText className="h-8 w-8 text-muted-foreground" />
+                          <div>
+                            <p className="text-sm font-medium">{message.attachments[0]?.name || 'File'}</p>
+                            <p className="text-xs text-muted-foreground">{message.attachments[0]?.size || 'Unknown size'}</p>
+                          </div>
                         </div>
                       </div>
                     )}
                     
                     {message.type === 'image' && (
-                      <div className="p-3 bg-secondary/50 rounded-lg max-w-md">
+                      <div className="bg-muted/30 rounded-2xl p-3 max-w-md">
                         <p className="text-sm italic text-muted-foreground">{message.content}</p>
                         <div className="mt-2 bg-muted rounded h-48 flex items-center justify-center">
                           <Image className="h-12 w-12 text-muted-foreground" aria-label="Image placeholder" />
@@ -436,7 +441,7 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
 
                     {/* Reactions */}
                     {message.reactions && message.reactions.length > 0 && (
-                      <div className="flex items-center gap-1 pt-1">
+                      <div className="flex items-center gap-1 mt-1">
                         {message.reactions.map((reaction, i) => (
                           <button
                             key={i}
@@ -571,13 +576,13 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
       )}
 
       {/* Message Input */}
-      <div className="p-4 border-t">
+      <div className="p-3 border-t">
         <div className="flex items-end space-x-2">
           <div className="flex-1">
             <div className="relative">
-              <div className="flex items-center space-x-1 absolute left-2 top-3">
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
-                  <Plus className="h-4 w-4" />
+              <div className="flex items-center space-x-1 absolute left-2 top-2.5">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
+                  <Plus className="h-3.5 w-3.5" />
                 </Button>
               </div>
               
@@ -596,36 +601,36 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
                 }}
                 placeholder={isGuest ? "Sign up to start chatting" : `Message #${channelName}`}
                 disabled={isGuest}
-                className="pl-10 pr-32 py-6"
+                className="pl-10 pr-32 py-4"
               />
               
-              <div className="flex items-center space-x-1 absolute right-2 top-3">
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+              <div className="flex items-center space-x-0.5 absolute right-2 top-2.5">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <AtSign className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Bold className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Italic className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Link2 className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Code className="h-4 w-4" />
                 </Button>
                 <Separator orientation="vertical" className="h-5" />
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Paperclip className="h-4 w-4" />
                 </Button>
-                <Button variant="ghost" size="sm" className="h-6 w-6 p-0">
+                <Button variant="ghost" size="sm" className="h-5 w-5 p-0">
                   <Smile className="h-4 w-4" />
                 </Button>
               </div>
             </div>
             
-            <div className="flex items-center justify-between mt-2">
+            <div className="flex items-center justify-between mt-1.5">
               <p className="text-xs text-muted-foreground">
                 <kbd className="px-1.5 py-0.5 text-xs bg-secondary rounded">Shift</kbd> + <kbd className="px-1.5 py-0.5 text-xs bg-secondary rounded">Enter</kbd> for new line
               </p>

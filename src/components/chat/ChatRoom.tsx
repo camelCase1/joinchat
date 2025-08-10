@@ -377,7 +377,7 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
 
         {/* Messages */}
         <ScrollArea className="flex-1 p-4">
-          <div className="space-y-4">
+          <div className="space-y-1.5">
             {filteredMessages.map((message, index) => {
               const showAvatar = index === 0 || filteredMessages[index - 1]?.userId !== message.userId;
               const isOwnMessage = message.userId === user?.uid;
@@ -399,8 +399,8 @@ export function ChatRoom({ roomId, onLeaveRoom }: ChatRoomProps) {
                       </div>
                     )}
                     <div className={cn(
-                      "inline-block px-3 py-2 rounded-lg",
-                      isOwnMessage ? "bg-primary text-primary-foreground" : "bg-muted"
+                      "inline-block px-3 py-1.5 rounded-2xl",
+                      isOwnMessage ? "bg-primary text-primary-foreground" : "bg-gray-100"
                     )}>
                       <p className="text-sm">{message.content}</p>
                     </div>

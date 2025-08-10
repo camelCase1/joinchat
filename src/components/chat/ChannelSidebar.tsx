@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '~/contexts/AuthContext';
 import { useSocket } from '~/hooks/useSocket';
 import { api } from '~/trpc/react';
@@ -93,7 +93,6 @@ export function ChannelSidebar({
 }: ChannelSidebarProps) {
   const { user, logout } = useAuth();
   const { socket } = useSocket();
-  const [channels, setChannels] = useState<Channel[]>([]);
   const [directMessages, setDirectMessages] = useState<DirectMessage[]>([]);
   const [showChannels, setShowChannels] = useState(true);
   const [showDMs, setShowDMs] = useState(true);
@@ -108,21 +107,51 @@ export function ChannelSidebar({
   const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
 
   // Load real channels from database
-  const { data: rooms } = api.post.getRooms.useQuery();
+  const { data: rooms, refetch: refetchRooms } = api.post.getRooms.useQuery();
   
-  useEffect(() => {
-    if (rooms) {
-      setChannels(rooms.map(room => ({
-        id: room.id,
-        name: room.name,
-        description: undefined, // Description not included in getRooms query
-        isPrivate: false, // Default to public since isPublic not included
-        participants: room.participantCount,
-        isPinned: room.featured,
-        unreadCount: unreadCounts[room.id] || 0,
-      })));
+  // Load starred channels for current user
+  const { data: starredChannelIds = [], refetch: refetchStarred } = api.post.getStarredChannels.useQuery(
+    { userId: user?.uid || '' },
+    { enabled: !!user?.uid }
+  );
+  
+  // Mutations for star/unstar
+  const starChannelMutation = api.post.starChannel.useMutation({
+    onSuccess: () => {
+      void refetchStarred();
     }
-  }, [rooms, unreadCounts]);
+  });
+  
+  const unstarChannelMutation = api.post.unstarChannel.useMutation({
+    onSuccess: () => {
+      void refetchStarred();
+    }
+  });
+  
+  // Mutation for creating channels
+  const createChannelMutation = api.post.createRoom.useMutation({
+    onSuccess: () => {
+      void refetchRooms();
+      setShowCreateDialog(false);
+      setNewChannelName('');
+      setNewChannelDescription('');
+      setNewChannelPrivate(false);
+    }
+  });
+  
+  // Compute channels from rooms data
+  const channels = useMemo<Channel[]>(() => {
+    if (!rooms) return [];
+    return rooms.map(room => ({
+      id: room.id,
+      name: room.name,
+      description: undefined,
+      isPrivate: false,
+      participants: room.participantCount,
+      isPinned: starredChannelIds.includes(room.id),
+      unreadCount: unreadCounts[room.id] || undefined, // Use undefined instead of 0
+    }));
+  }, [rooms, starredChannelIds, unreadCounts]);
 
   // Listen for unread count updates from socket
   useEffect(() => {
@@ -146,15 +175,18 @@ export function ChannelSidebar({
     setDirectMessages([]);
   }, []);
 
-  const filteredChannels = channels.filter(c => 
-    c.name.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredChannels = useMemo(() => 
+    channels.filter(c => 
+      c.name.toLowerCase().includes(searchQuery.toLowerCase())
+    ), [channels, searchQuery]);
 
-  const filteredDMs = directMessages.filter(dm => 
-    dm.userName.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredDMs = useMemo(() =>
+    directMessages.filter(dm => 
+      dm.userName.toLowerCase().includes(searchQuery.toLowerCase())
+    ), [directMessages, searchQuery]);
 
-  const starredChannels = channels.filter(c => c.isPinned);
+  const starredChannels = useMemo(() => 
+    channels.filter(c => c.isPinned), [channels]);
 
   const getStatusIcon = (status: string) => {
     switch(status) {
@@ -169,12 +201,28 @@ export function ChannelSidebar({
     return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
   };
 
-  const handleCreateChannel = () => {
-    // Create channel logic here
-    setShowCreateDialog(false);
-    setNewChannelName('');
-    setNewChannelDescription('');
-    setNewChannelPrivate(false);
+  const handleCreateChannel = async () => {
+    if (!newChannelName.trim()) return;
+    
+    try {
+      await createChannelMutation.mutateAsync({
+        name: newChannelName,
+        description: newChannelDescription || undefined,
+        topic: newChannelName.toLowerCase()
+      });
+    } catch (error) {
+      console.error('Failed to create channel:', error);
+    }
+  };
+
+  const handleToggleStar = async (channelId: string, isStarred: boolean) => {
+    if (!user?.uid) return;
+    
+    if (isStarred) {
+      await unstarChannelMutation.mutateAsync({ userId: user.uid, channelId });
+    } else {
+      await starChannelMutation.mutateAsync({ userId: user.uid, channelId });
+    }
   };
 
   return (
@@ -279,7 +327,7 @@ export function ChannelSidebar({
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="w-full justify-between px-2 h-7 hover:bg-transparent"
+                  className="w-full justify-between px-2 h-7"
                   onClick={() => setShowStarred(!showStarred)}
                 >
                   <div className="flex items-center">
@@ -291,26 +339,34 @@ export function ChannelSidebar({
                 {showStarred && (
                   <div className="mt-1 space-y-0.5">
                     {starredChannels.map(channel => (
-                      <Button
-                        key={channel.id}
-                        variant="ghost"
-                        size="sm"
-                        className={cn(
-                          "w-full justify-between px-6 h-7",
-                          currentChannelId === channel.id && "bg-primary/10 text-primary"
-                        )}
-                        onClick={() => onSelectChannel(channel.id)}
-                      >
-                        <div className="flex items-center">
-                          <Hash className="h-3 w-3 mr-1.5" />
-                          <span className="text-sm">{channel.name}</span>
+                      <div key={channel.id} className="flex items-center group">
+                        <div
+                          className={cn(
+                            "flex-1 flex items-center justify-between px-2 h-7 rounded-sm cursor-pointer hover:bg-accent/50 transition-colors",
+                            currentChannelId === channel.id && "bg-primary/10 text-primary hover:bg-primary/20"
+                          )}
+                          onClick={() => onSelectChannel(channel.id)}
+                        >
+                          <div className="flex items-center">
+                            <Hash className="h-3 w-3 mr-1.5" />
+                            <span className="text-sm">{channel.name}</span>
+                          </div>
+                          {channel.unreadCount > 0 ? (
+                            <Badge className="ml-auto h-5 px-1.5 text-xs bg-primary text-primary-foreground">
+                              {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
+                            </Badge>
+                          ) : null}
                         </div>
-                        {channel.unreadCount > 0 && (
-                          <Badge className="ml-auto h-5 px-1.5 text-xs bg-primary text-primary-foreground">
-                            {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
-                          </Badge>
-                        )}
-                      </Button>
+                        <button
+                          className="h-7 w-7 p-0 hover:bg-accent/70 rounded-sm flex items-center justify-center transition-colors"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleToggleStar(channel.id, true);
+                          }}
+                        >
+                          <Star className="h-3 w-3 fill-yellow-500 text-yellow-500" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -319,55 +375,62 @@ export function ChannelSidebar({
 
             {/* Channels */}
             <div className="mb-4">
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-full justify-between px-2 h-7 hover:bg-transparent"
-                onClick={() => setShowChannels(!showChannels)}
-              >
-                <div className="flex items-center">
+              <div className="flex items-center justify-between px-2 h-7">
+                <button
+                  className="flex items-center flex-1 px-1"
+                  onClick={() => setShowChannels(!showChannels)}
+                >
                   {showChannels ? <ChevronDown className="h-3 w-3 mr-1" /> : <ChevronRight className="h-3 w-3 mr-1" />}
                   <span className="text-xs font-semibold">Channels</span>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="h-5 w-5 p-0"
+                </button>
+                <button
+                  className="h-5 w-5 p-0 hover:bg-accent/70 rounded-sm flex items-center justify-center transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowCreateDialog(true);
                   }}
                 >
-                  <Plus className="h-3 w-3" />
-                </Button>
-              </Button>
+                  <Plus className="h-3 w-3 hover:text-accent-foreground" />
+                </button>
+              </div>
               {showChannels && (
                 <div className="mt-1 space-y-0.5">
                   {filteredChannels.map(channel => (
-                    <Button
-                      key={channel.id}
-                      variant="ghost"
-                      size="sm"
-                      className={cn(
-                        "w-full justify-between px-6 h-7 group",
-                        currentChannelId === channel.id && "bg-primary/10 text-primary"
-                      )}
-                      onClick={() => onSelectChannel(channel.id)}
-                    >
-                      <div className="flex items-center">
-                        {channel.isPrivate ? (
-                          <Lock className="h-3 w-3 mr-1.5" />
-                        ) : (
-                          <Hash className="h-3 w-3 mr-1.5" />
+                    <div key={channel.id} className="flex items-center group">
+                      <div
+                        className={cn(
+                          "flex-1 flex items-center justify-between px-2 h-7 rounded-sm cursor-pointer hover:bg-accent/50 transition-colors",
+                          currentChannelId === channel.id && "bg-primary/10 text-primary hover:bg-primary/20"
                         )}
-                        <span className="text-sm">{channel.name}</span>
+                        onClick={() => onSelectChannel(channel.id)}
+                      >
+                        <div className="flex items-center">
+                          {channel.isPrivate ? (
+                            <Lock className="h-3 w-3 mr-1.5" />
+                          ) : (
+                            <Hash className="h-3 w-3 mr-1.5" />
+                          )}
+                          <span className="text-sm">{channel.name}</span>
+                        </div>
+                        {channel.unreadCount > 0 ? (
+                          <Badge className="ml-auto h-5 px-1.5 text-xs bg-primary text-primary-foreground">
+                            {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
+                          </Badge>
+                        ) : null}
                       </div>
-                      {channel.unreadCount > 0 && (
-                        <Badge className="ml-auto h-5 px-1.5 text-xs bg-primary text-primary-foreground">
-                          {channel.unreadCount > 99 ? '99+' : channel.unreadCount}
-                        </Badge>
-                      )}
-                    </Button>
+                      <button
+                        className="h-7 w-7 p-0 opacity-0 group-hover:opacity-100 transition-all hover:bg-accent/70 rounded-sm flex items-center justify-center"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void handleToggleStar(channel.id, channel.isPinned || false);
+                        }}
+                      >
+                        <Star className={cn(
+                          "h-3 w-3 transition-colors",
+                          channel.isPinned ? "fill-yellow-500 text-yellow-500" : "text-muted-foreground hover:text-accent-foreground"
+                        )} />
+                      </button>
+                    </div>
                   ))}
                 </div>
               )}
@@ -378,7 +441,7 @@ export function ChannelSidebar({
               <Button
                 variant="ghost"
                 size="sm"
-                className="w-full justify-between px-2 h-7 hover:bg-transparent"
+                className="w-full justify-between px-2 h-7"
                 onClick={() => setShowDMs(!showDMs)}
               >
                 <div className="flex items-center">
@@ -415,11 +478,11 @@ export function ChannelSidebar({
                           <span className="text-xs text-muted-foreground italic">typing...</span>
                         )}
                       </div>
-                      {dm.unreadCount > 0 && (
+                      {dm.unreadCount > 0 ? (
                         <Badge className="ml-auto h-5 px-1.5 text-xs bg-primary text-primary-foreground">
                           {dm.unreadCount > 99 ? '99+' : dm.unreadCount}
                         </Badge>
-                      )}
+                      ) : null}
                     </Button>
                   ))}
                 </div>
@@ -497,8 +560,11 @@ export function ChannelSidebar({
             <Button variant="outline" onClick={() => setShowCreateDialog(false)}>
               Cancel
             </Button>
-            <Button onClick={handleCreateChannel} disabled={!newChannelName.trim()}>
-              Create Channel
+            <Button 
+              onClick={handleCreateChannel} 
+              disabled={!newChannelName.trim() || createChannelMutation.isPending}
+            >
+              {createChannelMutation.isPending ? 'Creating...' : 'Create Channel'}
             </Button>
           </DialogFooter>
         </DialogContent>

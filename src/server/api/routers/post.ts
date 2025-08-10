@@ -623,4 +623,39 @@ export const postRouter = createTRPCRouter({
       });
       return { success: true };
     }),
+
+  starChannel: publicProcedure
+    .input(z.object({ userId: z.string(), channelId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const starred = await ctx.db.starredChannel.create({
+        data: {
+          userId: input.userId,
+          channelId: input.channelId,
+        },
+      });
+      return { success: true, starred };
+    }),
+
+  unstarChannel: publicProcedure
+    .input(z.object({ userId: z.string(), channelId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await ctx.db.starredChannel.deleteMany({
+        where: {
+          userId: input.userId,
+          channelId: input.channelId,
+        },
+      });
+      return { success: true };
+    }),
+
+  getStarredChannels: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const starredChannels = await ctx.db.starredChannel.findMany({
+        where: { userId: input.userId },
+        include: { channel: true },
+        orderBy: { starredAt: 'desc' },
+      });
+      return starredChannels.map(sc => sc.channelId);
+    }),
 });

@@ -190,11 +190,36 @@ io.on('connection', (socket) => {
       joinedAt: new Date()
     };
     
-    const room = chatRooms.get(roomName);
+    let room = chatRooms.get(roomName);
 
+    // If room doesn't exist in memory, try to load it from database
     if (!room) {
-      socket.emit('error', { message: 'Room not found' });
-      return;
+      try {
+        const dbRoom = await db.chatRoom.findFirst({
+          where: { name: roomName }
+        });
+        
+        if (dbRoom) {
+          // Add room to memory cache
+          room = {
+            id: dbRoom.id,
+            name: dbRoom.name,
+            participants: [],
+            messages: [],
+            createdAt: dbRoom.createdAt,
+            maxParticipants: dbRoom.maxParticipants
+          };
+          chatRooms.set(roomName, room);
+          console.log(`✅ Loaded room '${roomName}' from database`);
+        } else {
+          socket.emit('error', { message: 'Room not found' });
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading room from database:', error);
+        socket.emit('error', { message: 'Failed to load room' });
+        return;
+      }
     }
 
     if (room.participants.length >= room.maxParticipants) {
@@ -366,10 +391,37 @@ io.on('connection', (socket) => {
     
     console.log('SERVER: send-message called', { roomName, message });
     
-    const room = chatRooms.get(roomName);
+    let room = chatRooms.get(roomName);
+    
+    // If room doesn't exist in memory, try to load it from database
     if (!room) {
-      console.error('Room not found:', roomName);
-      return;
+      try {
+        const dbRoom = await db.chatRoom.findFirst({
+          where: { name: roomName }
+        });
+        
+        if (dbRoom) {
+          // Add room to memory cache
+          room = {
+            id: dbRoom.id,
+            name: dbRoom.name,
+            participants: [],
+            messages: [],
+            createdAt: dbRoom.createdAt,
+            maxParticipants: dbRoom.maxParticipants
+          };
+          chatRooms.set(roomName, room);
+          console.log(`✅ Loaded room '${roomName}' from database for message send`);
+        } else {
+          console.error('Room not found in database:', roomName);
+          socket.emit('error', { message: 'Room not found' });
+          return;
+        }
+      } catch (error) {
+        console.error('Error loading room from database:', error);
+        socket.emit('error', { message: 'Failed to load room' });
+        return;
+      }
     }
 
     // Update user activity and profile

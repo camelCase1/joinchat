@@ -38,7 +38,8 @@
       "WebFetch(domain:localhost)",
       "Bash(timeout:*)",
       "Bash(sed:*)",
-      "Bash(awk:*)"
+      "Bash(awk:*)",
+      "Bash(mkdir:*)"
     ],
     "deny": []
   }
