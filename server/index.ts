@@ -488,13 +488,26 @@ io.on('connection', (socket) => {
     io.to(roomName).emit('new-message', newMessage);
 
     // After saving message, emit sidebar-unread to all room members except sender
-    const userIds = await getActiveUserIdsInRoom(roomName);
-    for (const uid of userIds) {
-      if (uid !== message.userId) {
-        // Get unread count for this user in this room
-        const member = await db.roomMember.findFirst({ where: { userId: uid, roomId: roomName } });
-        const unreadCount = await db.message.count({ where: { roomId: roomName, createdAt: { gt: member?.lastSeen || new Date(0) }, userId: { not: uid } } });
-        io.to(uid).emit('sidebar-unread', { roomId: roomName, userId: uid, unreadCount });
+    // Need to get the actual room ID from the database
+    const dbRoom = await db.chatRoom.findFirst({
+      where: { name: roomName }
+    });
+    
+    if (dbRoom) {
+      const userIds = await getActiveUserIdsInRoom(dbRoom.id);
+      for (const uid of userIds) {
+        if (uid !== message.userId) {
+          // Get unread count for this user in this room
+          const member = await db.roomMember.findFirst({ where: { userId: uid, roomId: dbRoom.id } });
+          const unreadCount = await db.message.count({ 
+            where: { 
+              roomId: dbRoom.id, 
+              createdAt: { gt: member?.lastSeen || new Date(0) }, 
+              userId: { not: uid } 
+            } 
+          });
+          io.to(uid).emit('sidebar-unread', { roomId: dbRoom.id, userId: uid, unreadCount });
+        }
       }
     }
   });

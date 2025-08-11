@@ -233,18 +233,36 @@ export const postRouter = createTRPCRouter({
   joinRoom: publicProcedure
     .input(z.object({
       roomId: z.string(),
-      userId: z.string()
+      userId: z.string(),
+      userName: z.string().optional(),
+      userEmail: z.string().optional()
     }))
     .mutation(async ({ ctx, input }) => {
-      // Check if user exists
-      const user = await ctx.db.user.findUnique({
+      // Check if user exists, create if not (for guest users)
+      let user = await ctx.db.user.findUnique({
         where: { id: input.userId }
       });
-
+      
+      if (!user && input.userId) {
+        // Create user record for guest/new users
+        user = await ctx.db.user.create({
+          data: {
+            id: input.userId,
+            displayName: input.userName || `User${input.userId.slice(-6)}`,
+            email: input.userEmail || `${input.userId}@guest.local`,
+            trustScore: 0,
+            badges: "",
+            daysLoggedIn: 0,
+            isOnline: true,
+            lastSeen: new Date()
+          }
+        });
+      }
+      
       if (!user) {
         throw new TRPCError({
           code: "NOT_FOUND",
-          message: "User not found"
+          message: "User not found and could not be created"
         });
       }
 
@@ -625,8 +643,54 @@ export const postRouter = createTRPCRouter({
     }),
 
   starChannel: publicProcedure
-    .input(z.object({ userId: z.string(), channelId: z.string() }))
+    .input(z.object({ 
+      userId: z.string(), 
+      channelId: z.string(),
+      userName: z.string().optional(),
+      userEmail: z.string().optional()
+    }))
     .mutation(async ({ ctx, input }) => {
+      // Ensure user exists (create if guest user)
+      let user = await ctx.db.user.findUnique({
+        where: { id: input.userId }
+      });
+      
+      if (!user && input.userId) {
+        user = await ctx.db.user.create({
+          data: {
+            id: input.userId,
+            displayName: input.userName || `User${input.userId.slice(-6)}`,
+            email: input.userEmail || `${input.userId}@guest.local`,
+            trustScore: 0,
+            badges: "",
+            daysLoggedIn: 0,
+            isOnline: true,
+            lastSeen: new Date()
+          }
+        });
+      }
+      
+      if (!user) {
+        throw new TRPCError({
+          code: "NOT_FOUND",
+          message: "User not found"
+        });
+      }
+      
+      // Check if already starred
+      const existing = await ctx.db.starredChannel.findUnique({
+        where: {
+          userId_channelId: {
+            userId: input.userId,
+            channelId: input.channelId
+          }
+        }
+      });
+      
+      if (existing) {
+        return { success: true, starred: existing };
+      }
+      
       const starred = await ctx.db.starredChannel.create({
         data: {
           userId: input.userId,
@@ -657,5 +721,57 @@ export const postRouter = createTRPCRouter({
         orderBy: { starredAt: 'desc' },
       });
       return starredChannels.map(sc => sc.channelId);
+    }),
+
+  getUserJoinedChannels: publicProcedure
+    .input(z.object({ userId: z.string() }))
+    .query(async ({ ctx, input }) => {
+      const joinedRooms = await ctx.db.roomMember.findMany({
+        where: { 
+          userId: input.userId,
+          isActive: true 
+        },
+        include: { 
+          room: true 
+        },
+        orderBy: { joinedAt: 'desc' },
+      });
+      
+      return joinedRooms.map(rm => ({
+        id: rm.room.id,
+        name: rm.room.name,
+        description: rm.room.description,
+        topic: rm.room.topic,
+        participantCount: rm.room.participantCount,
+        maxParticipants: rm.room.maxParticipants,
+        featured: rm.room.featured,
+        joinedAt: rm.joinedAt,
+      }));
+    }),
+
+  getAllPublicChannels: publicProcedure
+    .query(async ({ ctx }) => {
+      const rooms = await ctx.db.chatRoom.findMany({
+        where: { 
+          isPublic: true,
+          isActive: true 
+        },
+        orderBy: [
+          { featured: 'desc' },
+          { participantCount: 'desc' },
+          { createdAt: 'desc' }
+        ],
+      });
+
+      return rooms.map(room => ({
+        id: room.id,
+        name: room.name,
+        description: room.description,
+        topic: room.topic,
+        participantCount: room.participantCount,
+        maxParticipants: room.maxParticipants,
+        featured: room.featured,
+        createdAt: room.createdAt,
+      }));
     }),
 });

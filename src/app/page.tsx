@@ -4,14 +4,10 @@ import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '~/contexts/AuthContext';
 import { Sparkles } from 'lucide-react';
-import { api } from '~/trpc/react';
 
 export default function HomePage() {
   const { user, loading } = useAuth();
   const router = useRouter();
-  
-  // Load rooms from database
-  const { data: rooms } = api.post.getRooms.useQuery();
 
   useEffect(() => {
     if (!loading && !user) {
@@ -19,18 +15,12 @@ export default function HomePage() {
     }
   }, [user, loading, router]);
   
-  // Redirect to default channel when rooms load
+  // Redirect to chat page when user is authenticated
   useEffect(() => {
-    if (rooms && rooms.length > 0 && user) {
-      const generalRoom = rooms.find(r => r.name === 'general');
-      if (generalRoom) {
-        router.replace(`/r/${generalRoom.name}`);
-      } else if (rooms[0]) {
-        // Fallback to first room if no general room
-        router.replace(`/r/${rooms[0].name}`);
-      }
+    if (!loading && user) {
+      router.replace('/chat');
     }
-  }, [rooms, user, router]);
+  }, [user, loading, router]);
 
   if (loading) {
     return (

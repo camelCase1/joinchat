@@ -39,7 +39,17 @@
       "Bash(timeout:*)",
       "Bash(sed:*)",
       "Bash(awk:*)",
-      "Bash(mkdir:*)"
+      "Bash(mkdir:*)",
+      "Bash(say2:*)",
+      "Bash(say2:*)",
+      "mcp__playwright__browser_hover",
+      "mcp__playwright__browser_take_screenshot",
+      "mcp__playwright__browser_wait_for",
+      "Bash(open:*)",
+      "Bash(python3:*)",
+      "Bash(pip3 install:*)",
+      "Bash(playwright install:*)",
+      "Bash(claude mcp:*)"
     ],
     "deny": []
   }

@@ -7,6 +7,20 @@
 
 # testing
 /coverage
+/tests/screenshots
+
+# screenshots and test artifacts
+screenshots/
+test-screenshots/
+test-results/
+playwright-report/
+*.png
+*.jpg
+*.jpeg
+screenshot-*.png
+test-*.png
+complete-*.png
+simple-*.png
 
 # database
 /prisma/db.sqlite

@@ -3,6 +3,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useSocket } from '~/hooks/useSocket';
 import { useAuth } from '~/contexts/AuthContext';
+import { api } from '~/trpc/react';
+import { useToast } from '~/hooks/use-toast';
 import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Avatar, AvatarFallback } from '~/components/ui/avatar';
@@ -90,6 +92,7 @@ interface ModernChatRoomProps {
 export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChatRoomProps) {
   const { socket, connected } = useSocket();
   const { user, isGuest } = useAuth();
+  const { toast } = useToast();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -100,9 +103,85 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
   const [showFormatting, setShowFormatting] = useState(false);
   const [roomParticipants, setRoomParticipants] = useState<any[]>([]);
   const [currentRoom, setCurrentRoom] = useState<string | null>(null);
+  const [isStarred, setIsStarred] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Check if channel is starred
+  const { data: starredChannelIds = [] } = api.post.getStarredChannels.useQuery(
+    { userId: user?.uid || '' },
+    { enabled: !!user?.uid }
+  );
+  
+  // Get TRPC utils for query invalidation
+  const utils = api.useUtils();
+  
+  // Star/unstar mutations
+  const starChannelMutation = api.post.starChannel.useMutation({
+    onSuccess: () => {
+      setIsStarred(true);
+      // Invalidate the starred channels query to refresh the sidebar
+      void utils.post.getStarredChannels.invalidate();
+      toast({
+        title: "Channel starred",
+        description: `Added #${channelName} to your starred channels`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to star channel",
+        variant: "destructive",
+      });
+    }
+  });
+  
+  const unstarChannelMutation = api.post.unstarChannel.useMutation({
+    onSuccess: () => {
+      setIsStarred(false);
+      // Invalidate the starred channels query to refresh the sidebar
+      void utils.post.getStarredChannels.invalidate();
+      toast({
+        title: "Channel unstarred",
+        description: `Removed #${channelName} from your starred channels`,
+      });
+    },
+    onError: () => {
+      toast({
+        title: "Error",
+        description: "Failed to unstar channel",
+        variant: "destructive",
+      });
+    }
+  });
+  
+  // Update starred state when data changes
+  useEffect(() => {
+    setIsStarred(starredChannelIds.includes(channelId));
+  }, [starredChannelIds, channelId]);
+  
+  const handleToggleStar = async () => {
+    if (!user?.uid || isGuest) {
+      toast({
+        title: "Sign in required",
+        description: "Please sign in to star channels",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (isStarred) {
+      await unstarChannelMutation.mutateAsync({ userId: user.uid, channelId });
+    } else {
+      await starChannelMutation.mutateAsync({ 
+        userId: user.uid, 
+        channelId,
+        userName: user.displayName || undefined,
+        userEmail: user.email || undefined
+      });
+    }
+  };
 
   // Join room and setup socket listeners
   useEffect(() => {
@@ -127,6 +206,14 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
       userName: user?.displayName || 'Guest'
     });
     setCurrentRoom(roomName);
+    
+    // Mark room as read when joining
+    if (user?.uid && channelId) {
+      socket.emit('read-room', {
+        roomId: channelId,
+        userId: user.uid
+      });
+    }
 
     // Socket event listeners
     const handleRoomJoined = (data: any) => {
@@ -145,6 +232,14 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
         ...message,
         timestamp: new Date(message.timestamp)
       }]);
+      
+      // Mark as read if user is actively viewing this channel
+      if (user?.uid && channelId && message.userId !== user.uid) {
+        socket.emit('read-room', {
+          roomId: channelId,
+          userId: user.uid
+        });
+      }
     };
 
     const handleUserJoined = (data: any) => {
@@ -336,9 +431,18 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
           <Hash className="h-4 w-4 text-muted-foreground" />
           <h2 className="font-semibold text-base">{channelName}</h2>
           <Separator orientation="vertical" className="h-5" />
-          <Button variant="ghost" size="sm" className="h-6 px-1.5">
-            <Star className="h-3 w-3 mr-0.5" />
-            Star
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 px-1.5"
+            onClick={handleToggleStar}
+            disabled={isGuest || starChannelMutation.isPending || unstarChannelMutation.isPending}
+          >
+            <Star className={cn(
+              "h-3 w-3 mr-0.5",
+              isStarred && "fill-yellow-500 text-yellow-500"
+            )} />
+            {isStarred ? 'Starred' : 'Star'}
           </Button>
           <Separator orientation="vertical" className="h-5" />
           <div className="flex items-center space-x-2">
@@ -376,7 +480,16 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
       {/* Messages Area */}
       <ScrollArea className="flex-1 p-3">
         <div>
-          {messages.map((message, index) => {
+          {messages.length === 0 ? (
+            <div className="flex items-center justify-center h-full min-h-[400px]">
+              <div className="text-center">
+                <MessageSquare className="h-12 w-12 text-muted-foreground/50 mx-auto mb-3" />
+                <p className="text-lg font-medium text-muted-foreground">Be the first to talk</p>
+                <p className="text-sm text-muted-foreground/70 mt-1">Start the conversation in #{channelName}</p>
+              </div>
+            </div>
+          ) : (
+          messages.map((message, index) => {
             const showAvatar = index === 0 || messages[index - 1]?.userId !== message.userId;
             const isOwnMessage = message.userId === user?.uid;
             
@@ -542,7 +655,7 @@ export function ModernChatRoom({ channelId, channelName, isPrivate }: ModernChat
                 </div>
               </div>
             );
-          })}
+          }))}
           <div ref={messagesEndRef} />
         </div>
       </ScrollArea>

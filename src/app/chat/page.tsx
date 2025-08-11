@@ -1,11 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { useRouter, useParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useAuth } from '~/contexts/AuthContext';
 import { ChannelSidebar } from '~/components/chat/ChannelSidebar';
-import { ModernChatRoom } from '~/components/chat/ModernChatRoom';
-import { Button } from '~/components/ui/button';
 import { Sparkles } from 'lucide-react';
 import { api } from '~/trpc/react';
 import {
@@ -16,18 +14,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog';
+import { Button } from '~/components/ui/button';
 import { Input } from '~/components/ui/input';
 import { Label } from '~/components/ui/label';
 import { Textarea } from '~/components/ui/textarea';
 import { useToast } from '~/hooks/use-toast';
 
-export default function ChannelPage() {
+export default function ChatPage() {
   const { user, loading } = useAuth();
   const router = useRouter();
   const { toast } = useToast();
-  const params = useParams();
-  const channelName = params.channel as string;
-  const [currentChannelId, setCurrentChannelId] = useState<string>('');
   const [currentDMUserId, setCurrentDMUserId] = useState<string | null>(null);
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [newChannelName, setNewChannelName] = useState('');
@@ -86,24 +82,6 @@ export default function ChannelPage() {
       router.push('/auth');
     }
   }, [user, loading, router]);
-  
-  // Find channel by name and set current channel
-  useEffect(() => {
-    if (rooms && channelName) {
-      const room = rooms.find(r => r.name === channelName);
-      if (room) {
-        setCurrentChannelId(room.id);
-      } else {
-        // Channel not found, redirect to general or first available channel
-        const generalRoom = rooms.find(r => r.name === 'general');
-        if (generalRoom) {
-          router.replace(`/r/${generalRoom.name}`);
-        } else if (rooms[0]) {
-          router.replace(`/r/${rooms[0].name}`);
-        }
-      }
-    }
-  }, [rooms, channelName, router]);
 
   if (loading) {
     return (
@@ -136,8 +114,6 @@ export default function ChannelPage() {
 
   const handleSelectDM = (userId: string) => {
     setCurrentDMUserId(userId);
-    setCurrentChannelId('');
-    // TODO: Implement DM routing when DM feature is added
   };
 
   const handleCreateChannel = (prefillName?: string) => {
@@ -161,20 +137,13 @@ export default function ChannelPage() {
   return (
     <div className="flex h-screen bg-background">
       <ChannelSidebar
-        currentChannelId={currentChannelId}
+        currentChannelId={null}
         onSelectChannel={handleSelectChannel}
         onSelectDM={handleSelectDM}
         onCreateChannel={handleCreateChannel}
       />
       
-      {currentChannelId && (
-        <ModernChatRoom
-          channelId={currentChannelId}
-          channelName={channelName}
-        />
-      )}
-      
-      {currentDMUserId && (
+      {currentDMUserId ? (
         <div className="flex-1 flex items-center justify-center">
           <div className="text-center space-y-4">
             <div className="p-4 gradient-bg rounded-2xl inline-block">
@@ -184,16 +153,21 @@ export default function ChannelPage() {
             <p className="text-muted-foreground">DM functionality coming soon!</p>
           </div>
         </div>
-      )}
-      
-      {!currentChannelId && !currentDMUserId && (
+      ) : (
         <div className="flex-1 flex items-center justify-center">
-          <div className="text-center space-y-4">
+          <div className="text-center space-y-6 max-w-md">
             <div className="p-4 gradient-bg rounded-2xl inline-block">
               <Sparkles className="h-12 w-12 text-white" />
             </div>
-            <h2 className="text-2xl font-bold">Welcome to ever.chat</h2>
-            <p className="text-muted-foreground">Select a channel to start chatting</p>
+            <h1 className="text-3xl font-bold">Welcome to ever.chat</h1>
+            <p className="text-muted-foreground text-lg">
+              Select a channel from the sidebar to start chatting
+            </p>
+            <div className="pt-4">
+              <p className="text-sm text-muted-foreground">
+                Join topic-based conversations in small, focused rooms of up to 30 people
+              </p>
+            </div>
           </div>
         </div>
       )}

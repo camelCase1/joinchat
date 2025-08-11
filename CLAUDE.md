@@ -10,7 +10,7 @@ Ever.Chat is a community-owned, AI-moderated messaging platform for topic-based,
 
 ```bash
 # Start both frontend and backend (recommended)
-npm run dev:full
+npm run dev           # Runs both Next.js and Socket.io server
 
 # Database operations
 npm run db:push       # Sync schema to database
@@ -23,10 +23,18 @@ npm run lint:fix      # Auto-fix linting issues
 npm run typecheck     # TypeScript type checking
 npm run format:write  # Format with Prettier
 
-# Build and production
-npm run build         # Production build
-npm run preview      # Build and preview production
+# ⚠️ IMPORTANT: BUILD COMMANDS - DO NOT RUN ⚠️
+# npm run build       # DO NOT RUN - User will run builds manually
+# npm run preview     # DO NOT RUN - User will run this manually
 ```
+
+## 🚨 CRITICAL: Never Run Build Commands 🚨
+
+**NEVER run `npm run build` or any build-related commands automatically.**
+- The user will handle all production builds manually
+- This includes `npm run build`, `npm run preview`, or any similar commands
+- Only use development commands like `npm run dev` for testing
+- If you need to verify the app works, use `npm run dev` and test with Playwright
 
 ## Architecture Overview
 
@@ -44,6 +52,7 @@ npm run preview      # Build and preview production
 - `src/server/db.ts` - Database client
 - `server/index.ts` - Socket.io real-time server
 - `prisma/schema.prisma` - Database schema
+- `tests/screenshots/*` - Test screenshots (gitignored)
 
 ### Real-time Architecture
 The Socket.io server (`server/index.ts`) handles:
@@ -101,6 +110,56 @@ Before committing:
    - Verify channel navigation
    - Check message sending/receiving
    - Confirm UI renders without errors
+
+### Screenshot Policy
+**NEVER save screenshots to disk or show screenshot previews**:
+- Do not use `mcp__playwright__browser_take_screenshot` with a filename parameter
+- Do not save test screenshots to the filesystem
+- Use `mcp__playwright__browser_snapshot` for debugging instead of screenshots
+- All screenshot files are gitignored and should not be committed
+- If screenshots are needed for debugging, view them in memory only
+
+## YOLO Mode
+
+When YOLO mode is enabled, Claude will:
+- Take decisive actions without asking for confirmation
+- Automatically fix errors and issues as they're discovered
+- Make implementation decisions based on best practices
+- Complete multi-step tasks autonomously
+- Only ask for user input when absolutely necessary (missing critical information)
+
+To enable YOLO mode, simply tell Claude "YOLO mode enabled" or "go ahead with YOLO mode".
+
+## Audio Notifications
+
+### Task Completion Notification
+When you complete a task, run the following command to provide audio feedback:
+```bash
+say2 "Task completed successfully"
+```
+
+You can customize the message based on what was accomplished. Examples:
+- `say2 "Channel creation functionality fixed and tested"`
+- `say2 "Message bubble styling completed"`
+- `say2 "All tests passing, ready for review"`
+- `say2 "Build successful, no errors found"`
+
+### User Action Required Notification
+**IMPORTANT**: Whenever you need the user to take an action or provide input, use the `say2` command to alert them. This ensures the user knows when their attention is needed without constantly monitoring the screen.
+
+**CRITICAL**: When Claude shows prompts asking for confirmation (like "Do you want to make this edit to X?"), ALWAYS run `say2` to notify the user that you're waiting for their response. This prevents blocking situations where the user doesn't realize Claude is waiting for input.
+
+Examples of when to alert the user:
+- `say2 "Waiting for your confirmation to edit ChannelSidebar.tsx"`
+- `say2 "Please confirm if you want to make the edit"`
+- `say2 "Please provide the API key for the service"`
+- `say2 "Waiting for you to choose between option A or B"`
+- `say2 "Need confirmation before proceeding with database migration"`
+- `say2 "Please review the changes and confirm if they look correct"`
+- `say2 "Authentication required. Please enter your credentials"`
+- `say2 "Build failed. Please check the error and provide guidance"`
+
+Always use clear, concise messages that describe what action is needed from the user. This provides helpful audio feedback so the user knows when their input is required.
 
 ## Common Workflows
 
